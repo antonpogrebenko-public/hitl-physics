@@ -1,0 +1,27 @@
+[package]
+name = "hitl-physics"
+version = "0.1.0"
+edition = "2021"
+description = "Quadrotor physics simulation engine for HITL testing"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+nalgebra = "0.33"
+
+[dependencies.wasm-bindgen]
+version = "=0.2.100"
+optional = true
+
+[dependencies.js-sys]
+version = "0.3"
+optional = true
+
+[features]
+default = []
+wasm = ["wasm-bindgen", "js-sys"]
+
+[dev-dependencies]
+approx = "0.5"
