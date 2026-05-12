@@ -65,6 +65,40 @@ impl PhysicsConfig {
         }
     }
 
+    pub fn from_motor_specs(
+        kv: f64,
+        prop_diameter_inches: f64,
+        frame_weight_g: f64,
+        motor_weight_g: f64,
+    ) -> Self {
+        let prop_factor = match prop_diameter_inches as u32 {
+            0..=4 => 0.8e-6,
+            5 => 1.9e-6,
+            6 => 3.2e-6,
+            _ => 5.0e-6,
+        };
+
+        let kt = prop_factor * (2300.0 / kv).powi(2);
+        let kq = kt * 0.026;
+        let tau_motor = 0.02 + (1500.0 / kv) * 0.01;
+        let mass_kg = (frame_weight_g + 4.0 * motor_weight_g) / 1000.0;
+        let arm_length_m = prop_diameter_inches * 0.0254 * 1.1;
+        let ixx = mass_kg * arm_length_m * arm_length_m * 0.5;
+        let iyy = ixx;
+        let izz = mass_kg * arm_length_m * arm_length_m * 0.8;
+
+        Self {
+            mass_kg,
+            arm_length_m,
+            inertia: [ixx, iyy, izz],
+            kt,
+            kq,
+            tau_motor,
+            drag_coeffs: [0.25, 0.25, 0.15],
+            gravity: 9.80665,
+        }
+    }
+
     /// Calculate hover throttle for this configuration.
     ///
     /// Returns the motor speed (rad/s) needed per motor to hover.
@@ -94,5 +128,28 @@ mod tests {
         let thrust = 4.0 * config.kt * omega * omega;
         let weight = config.mass_kg * config.gravity;
         assert!((thrust - weight).abs() < 1e-6);
+    }
+
+    #[test]
+    fn from_motor_specs_2306_1700kv_5inch() {
+        let config = PhysicsConfig::from_motor_specs(1700.0, 5.0, 350.0, 33.0);
+
+        assert!((config.mass_kg - 0.482).abs() < 1e-6);
+        assert!((config.arm_length_m - 0.1397).abs() < 1e-4);
+        assert!(config.kt > 3.0e-6 && config.kt < 4.0e-6);
+        assert!((config.kq - config.kt * 0.026).abs() < 1e-12);
+        assert!(config.tau_motor > 0.025 && config.tau_motor < 0.035);
+        assert!(config.inertia[2] > config.inertia[0]);
+        assert!(config.inertia[0] > 0.0);
+    }
+
+    #[test]
+    fn from_motor_specs_high_kv_small_prop() {
+        let config_small = PhysicsConfig::from_motor_specs(2500.0, 4.0, 200.0, 25.0);
+        let config_5inch = PhysicsConfig::from_motor_specs(1700.0, 5.0, 350.0, 33.0);
+
+        assert!((config_small.mass_kg - 0.3).abs() < 1e-6);
+        assert!(config_small.kt < config_5inch.kt);
+        assert!(config_small.tau_motor < config_5inch.tau_motor);
     }
 }
