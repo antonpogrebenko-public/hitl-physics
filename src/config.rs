@@ -21,6 +21,28 @@ pub struct PhysicsConfig {
     pub drag_coeffs: [f64; 3],
     /// Gravitational acceleration in m/s²
     pub gravity: f64,
+
+    // Electrical parameters
+    /// Motor KV rating (RPM per volt, unloaded)
+    pub motor_kv: f64,
+    /// Motor winding resistance in ohms
+    pub motor_resistance_ohm: f64,
+    /// Battery voltage (nominal)
+    pub battery_voltage: f64,
+    /// Motor torque constant Kt in N·m/A (derived from KV: Kt = 60 / (2π * KV))
+    pub motor_kt_electrical: f64,
+
+    // Thermal parameters
+    /// Motor thermal mass in J/K (winding + stator heat capacity)
+    pub thermal_mass_j_per_k: f64,
+    /// Thermal dissipation coefficient in W/K (convective + radiative cooling)
+    pub thermal_dissipation_w_per_k: f64,
+    /// Ambient temperature in °C
+    pub ambient_temp_c: f64,
+    /// Maximum safe motor temperature in °C (before derating)
+    pub max_motor_temp_c: f64,
+    /// Temperature at which motor shuts down in °C
+    pub motor_shutdown_temp_c: f64,
 }
 
 impl Default for PhysicsConfig {
@@ -28,6 +50,7 @@ impl Default for PhysicsConfig {
         // Typical 5" FPV quad, ~2kg AUW
         // Motors: 2306 size, ~1200 KV, 5" props
         // Max thrust per motor: ~12N at 2500 rad/s
+        let motor_kv = 1200.0;
         Self {
             mass_kg: 2.0,
             arm_length_m: 0.11,              // 220mm diagonal frame
@@ -37,12 +60,26 @@ impl Default for PhysicsConfig {
             tau_motor: 0.025,                 // 25ms motor time constant
             drag_coeffs: [0.25, 0.25, 0.15],
             gravity: 9.80665,
+
+            // Electrical parameters for 2306 motor
+            motor_kv,
+            motor_resistance_ohm: 0.065,      // Typical 2306 motor winding resistance
+            battery_voltage: 14.8,            // 4S LiPo nominal (4 × 3.7V)
+            motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * motor_kv),
+
+            // Thermal parameters (estimated for 2306 motor ~33g)
+            thermal_mass_j_per_k: 15.0,       // Copper windings + stator mass
+            thermal_dissipation_w_per_k: 0.8, // Convective cooling with prop airflow
+            ambient_temp_c: 25.0,
+            max_motor_temp_c: 100.0,          // Start power derating
+            motor_shutdown_temp_c: 150.0,     // Emergency shutdown
         }
     }
 }
 
 impl PhysicsConfig {
-    /// Create a new physics config with custom parameters.
+    /// Create a new physics config with custom parameters (legacy, uses defaults for electrical/thermal).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         mass_kg: f64,
         arm_length_m: f64,
@@ -53,6 +90,7 @@ impl PhysicsConfig {
         drag_coeffs: [f64; 3],
         gravity: f64,
     ) -> Self {
+        let defaults = Self::default();
         Self {
             mass_kg,
             arm_length_m,
@@ -62,6 +100,16 @@ impl PhysicsConfig {
             tau_motor,
             drag_coeffs,
             gravity,
+            // Use defaults for electrical/thermal
+            motor_kv: defaults.motor_kv,
+            motor_resistance_ohm: defaults.motor_resistance_ohm,
+            battery_voltage: defaults.battery_voltage,
+            motor_kt_electrical: defaults.motor_kt_electrical,
+            thermal_mass_j_per_k: defaults.thermal_mass_j_per_k,
+            thermal_dissipation_w_per_k: defaults.thermal_dissipation_w_per_k,
+            ambient_temp_c: defaults.ambient_temp_c,
+            max_motor_temp_c: defaults.max_motor_temp_c,
+            motor_shutdown_temp_c: defaults.motor_shutdown_temp_c,
         }
     }
 
@@ -71,9 +119,11 @@ impl PhysicsConfig {
         frame_weight_g: f64,
         motor_weight_g: f64,
     ) -> Self {
-        Self::from_build_specs(kv, prop_diameter_inches, prop_diameter_inches * 0.9, 3, frame_weight_g, motor_weight_g)
+        Self::from_build_specs(kv, prop_diameter_inches, prop_diameter_inches * 0.9, 3, frame_weight_g, motor_weight_g, 14.8)
     }
 
+    /// Create config from build specs with full electrical/thermal modeling.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_build_specs(
         kv: f64,
         prop_diameter_inches: f64,
@@ -81,6 +131,7 @@ impl PhysicsConfig {
         blade_count: i32,
         frame_weight_g: f64,
         motor_weight_g: f64,
+        battery_voltage: f64,
     ) -> Self {
         // Base prop factor from diameter (empirical lookup)
         let base_prop_factor = match prop_diameter_inches as u32 {
@@ -109,6 +160,17 @@ impl PhysicsConfig {
         let iyy = ixx;
         let izz = mass_kg * arm_length_m * arm_length_m * 0.8;
 
+        // Estimate motor resistance from stator size (larger = lower resistance)
+        // Typical: 2306 ~0.065Ω, 2207 ~0.080Ω, 1404 ~0.150Ω
+        let stator_volume_proxy = kv / 1000.0; // Lower KV typically = larger stator
+        let motor_resistance_ohm = 0.05 + 0.02 / stator_volume_proxy.max(0.5);
+
+        // Thermal mass scales with motor weight (copper has ~385 J/kg·K)
+        let thermal_mass_j_per_k = motor_weight_g * 0.4; // ~40% of motor is copper windings
+
+        // Thermal dissipation improves with prop airflow (larger prop = better cooling)
+        let thermal_dissipation_w_per_k = 0.5 + 0.1 * prop_diameter_inches;
+
         Self {
             mass_kg,
             arm_length_m,
@@ -118,6 +180,19 @@ impl PhysicsConfig {
             tau_motor,
             drag_coeffs: [0.25, 0.25, 0.15],
             gravity: 9.80665,
+
+            // Electrical parameters
+            motor_kv: kv,
+            motor_resistance_ohm,
+            battery_voltage,
+            motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * kv),
+
+            // Thermal parameters
+            thermal_mass_j_per_k,
+            thermal_dissipation_w_per_k,
+            ambient_temp_c: 25.0,
+            max_motor_temp_c: 100.0,
+            motor_shutdown_temp_c: 150.0,
         }
     }
 
@@ -128,6 +203,29 @@ impl PhysicsConfig {
         // At hover: 4 * kt * ω² = m * g
         // ω = sqrt(m * g / (4 * kt))
         ((self.mass_kg * self.gravity) / (4.0 * self.kt)).sqrt()
+    }
+
+    /// Calculate maximum motor speed based on battery voltage (no-load).
+    ///
+    /// max_rpm = KV × voltage, converted to rad/s
+    pub fn max_motor_speed_from_voltage(&self) -> f64 {
+        let max_rpm = self.motor_kv * self.battery_voltage;
+        max_rpm * std::f64::consts::PI / 30.0 // RPM to rad/s
+    }
+
+    /// Calculate power derating factor based on motor temperature.
+    ///
+    /// Returns 1.0 at or below max_motor_temp_c, linearly decreasing to 0.0 at shutdown temp.
+    pub fn thermal_derating_factor(&self, motor_temp_c: f64) -> f64 {
+        if motor_temp_c <= self.max_motor_temp_c {
+            1.0
+        } else if motor_temp_c >= self.motor_shutdown_temp_c {
+            0.0
+        } else {
+            let range = self.motor_shutdown_temp_c - self.max_motor_temp_c;
+            let excess = motor_temp_c - self.max_motor_temp_c;
+            1.0 - (excess / range)
+        }
     }
 }
 
@@ -177,10 +275,10 @@ mod tests {
 
     #[test]
     fn from_build_specs_pitch_and_blades_affect_kt() {
-        // Same motor/frame, different props
-        let low_pitch_2blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 3.0, 2, 350.0, 33.0);
-        let high_pitch_3blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 3, 350.0, 33.0);
-        let high_pitch_4blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 4, 350.0, 33.0);
+        // Same motor/frame, different props (4S battery)
+        let low_pitch_2blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 3.0, 2, 350.0, 33.0, 14.8);
+        let high_pitch_3blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 3, 350.0, 33.0, 14.8);
+        let high_pitch_4blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 4, 350.0, 33.0, 14.8);
 
         // Higher pitch = higher kt
         assert!(high_pitch_3blade.kt > low_pitch_2blade.kt);
@@ -188,5 +286,30 @@ mod tests {
         assert!(high_pitch_4blade.kt > high_pitch_3blade.kt);
         // Mass should be the same for all
         assert!((low_pitch_2blade.mass_kg - high_pitch_4blade.mass_kg).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_voltage_limited_max_speed() {
+        let config = PhysicsConfig::default(); // 1200KV, 14.8V
+        let max_speed = config.max_motor_speed_from_voltage();
+        // 1200 KV * 14.8V = 17760 RPM = 1860 rad/s
+        assert!((max_speed - 1860.0).abs() < 10.0);
+    }
+
+    #[test]
+    fn test_thermal_derating() {
+        let config = PhysicsConfig::default();
+
+        // Below max temp: no derating
+        assert!((config.thermal_derating_factor(80.0) - 1.0).abs() < 1e-10);
+
+        // At max temp: no derating yet
+        assert!((config.thermal_derating_factor(100.0) - 1.0).abs() < 1e-10);
+
+        // Midway between max and shutdown: 50% derating
+        assert!((config.thermal_derating_factor(125.0) - 0.5).abs() < 1e-10);
+
+        // At shutdown: full derating
+        assert!((config.thermal_derating_factor(150.0) - 0.0).abs() < 1e-10);
     }
 }

@@ -111,6 +111,16 @@ pub fn rk4_step(
                     + k4.motor_derivs[i]);
     }
 
+    // Motor temperatures
+    for i in 0..4 {
+        new_state.motor_temps[i] = state.motor_temps[i]
+            + (dt / 6.0)
+                * (k1.motor_temp_derivs[i]
+                    + 2.0 * k2.motor_temp_derivs[i]
+                    + 2.0 * k3.motor_temp_derivs[i]
+                    + k4.motor_temp_derivs[i]);
+    }
+
     new_state
 }
 
@@ -130,6 +140,7 @@ fn apply_derivative(
 
     for i in 0..4 {
         new_state.motor_speeds[i] += dt * deriv.motor_derivs[i];
+        new_state.motor_temps[i] += dt * deriv.motor_temp_derivs[i];
     }
 
     // Update quaternion

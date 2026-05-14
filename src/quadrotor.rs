@@ -1,23 +1,26 @@
 //! Quadrotor state vector and rigid body dynamics.
 
 use crate::config::PhysicsConfig;
-use crate::motor::{compute_reaction_torque, compute_thrust};
+use crate::motor::{compute_reaction_torque, compute_thrust, motor_temp_derivative};
 use nalgebra::{UnitQuaternion, Vector3};
 
 /// Complete state of a quadrotor in NED frame.
 ///
-/// Motor layout (top-down view, X configuration, matches PX4 after remapping):
+/// Motor layout matches PX4 Standard Quad X directly (no remapping needed):
 /// ```text
 ///     Front
-///   1       2
-///     \   /
-///       X
-///     /   \
-///   4       3
+///   3(CW)   1(CCW)
+///      \   /
+///        X
+///      /   \
+///   2(CCW)  4(CW)
 ///     Back
 /// ```
-/// After PX4→Sim remapping: Motors 1 and 3 spin CW, motors 2 and 4 spin CCW.
-/// This matches PX4's Quad X: FL/BR are CW, FR/BL are CCW (diagonals same direction).
+/// Motor indices match HIL_ACTUATOR_CONTROLS channels 0-3:
+/// Motor 1 = ch0 = Front-Right, CCW
+/// Motor 2 = ch1 = Back-Left,   CCW
+/// Motor 3 = ch2 = Front-Left,  CW
+/// Motor 4 = ch3 = Back-Right,  CW
 #[derive(Debug, Clone)]
 pub struct QuadrotorState {
     /// Position in NED frame [North, East, Down] in meters
@@ -30,6 +33,8 @@ pub struct QuadrotorState {
     pub angular_velocity: [f64; 3],
     /// Motor speeds [ω1, ω2, ω3, ω4] in rad/s
     pub motor_speeds: [f64; 4],
+    /// Motor temperatures [T1, T2, T3, T4] in °C
+    pub motor_temps: [f64; 4],
 }
 
 impl Default for QuadrotorState {
@@ -40,6 +45,7 @@ impl Default for QuadrotorState {
             quaternion: UnitQuaternion::identity(),
             angular_velocity: [0.0, 0.0, 0.0],
             motor_speeds: [0.0, 0.0, 0.0, 0.0],
+            motor_temps: [25.0, 25.0, 25.0, 25.0], // Start at ambient
         }
     }
 }
@@ -57,6 +63,8 @@ pub struct StateDerivative {
     pub angular_accel: [f64; 3],
     /// Motor speed derivatives
     pub motor_derivs: [f64; 4],
+    /// Motor temperature derivatives (°C/s)
+    pub motor_temp_derivs: [f64; 4],
 }
 
 impl QuadrotorState {
@@ -69,6 +77,7 @@ impl QuadrotorState {
             quaternion: UnitQuaternion::identity(),
             angular_velocity: [0.0, 0.0, 0.0],
             motor_speeds: [hover_omega, hover_omega, hover_omega, hover_omega],
+            motor_temps: [config.ambient_temp_c; 4],
         }
     }
 
@@ -91,24 +100,23 @@ impl QuadrotorState {
         let total_thrust = f1 + f2 + f3 + f4;
         let thrust_body = Vector3::new(0.0, 0.0, -total_thrust);
 
-        // Roll torque (about body X axis, FRD convention: positive = right wing down)
-        // Upward thrust on left (motors 1,4) lifts left side → right wing down → positive roll
+        // Roll torque (about body X axis, FRD: positive = right wing down)
+        // Left motors (2=BL, 3=FL) up → left lifts → right wing down → +roll
         let cos45 = std::f64::consts::FRAC_1_SQRT_2;
-        let tau_roll = l * cos45 * (f1 + f4 - f2 - f3);
+        let tau_roll = l * cos45 * (f2 + f3 - f1 - f4);
 
-        // Pitch torque (about body Y axis, FRD convention: positive = nose up)
-        // Upward thrust on front (motors 1,2) lifts front → nose up → positive pitch
-        let tau_pitch = l * cos45 * (f1 + f2 - f3 - f4);
+        // Pitch torque (about body Y axis, FRD: positive = nose up)
+        // Front motors (1=FR, 3=FL) up → front rises → nose tilts up → +pitch
+        let tau_pitch = l * cos45 * (f1 + f3 - f2 - f4);
 
         // Yaw torque from motor reaction torques
-        // After PX4→Sim remapping: Motors 1,3 spin CW (negative torque), motors 2,4 spin CCW (positive torque)
-        // CCW prop creates CW reaction on frame (positive yaw in NED/FRD)
-        // CW prop creates CCW reaction on frame (negative yaw in NED/FRD)
+        // CCW motors (1=FR, 2=BL) spin CCW → CW frame reaction → +yaw
+        // CW motors (3=FL, 4=BR) spin CW → CCW frame reaction → -yaw
         let q1 = compute_reaction_torque(w1, config);
         let q2 = compute_reaction_torque(w2, config);
         let q3 = compute_reaction_torque(w3, config);
         let q4 = compute_reaction_torque(w4, config);
-        let tau_yaw = -q1 + q2 - q3 + q4;
+        let tau_yaw = q1 + q2 - q3 - q4;
 
         let torque_body = Vector3::new(tau_roll, tau_pitch, tau_yaw);
 
@@ -214,13 +222,42 @@ impl QuadrotorState {
             (motor_commands[3] - self.motor_speeds[3]) / config.tau_motor,
         ];
 
+        // Thermal dynamics
+        let motor_temp_derivs = [
+            motor_temp_derivative(self.motor_temps[0], self.motor_speeds[0], config),
+            motor_temp_derivative(self.motor_temps[1], self.motor_speeds[1], config),
+            motor_temp_derivative(self.motor_temps[2], self.motor_speeds[2], config),
+            motor_temp_derivative(self.motor_temps[3], self.motor_speeds[3], config),
+        ];
+
         StateDerivative {
             velocity,
             acceleration,
             quaternion_deriv,
             angular_accel,
             motor_derivs,
+            motor_temp_derivs,
         }
+    }
+
+    /// Get average motor temperature.
+    pub fn avg_motor_temp(&self) -> f64 {
+        self.motor_temps.iter().sum::<f64>() / 4.0
+    }
+
+    /// Get maximum motor temperature.
+    pub fn max_motor_temp(&self) -> f64 {
+        self.motor_temps.iter().cloned().fold(f64::MIN, f64::max)
+    }
+
+    /// Check if any motor is overheating (above max safe temp).
+    pub fn is_overheating(&self, config: &PhysicsConfig) -> bool {
+        self.motor_temps.iter().any(|&t| t > config.max_motor_temp_c)
+    }
+
+    /// Check if any motor has shut down due to thermal protection.
+    pub fn thermal_shutdown(&self, config: &PhysicsConfig) -> bool {
+        self.motor_temps.iter().any(|&t| t >= config.motor_shutdown_temp_c)
     }
 }
 
@@ -270,6 +307,36 @@ mod tests {
         assert_relative_eq!(torques.x, 0.0, epsilon = 1e-10);
         assert_relative_eq!(torques.y, 0.0, epsilon = 1e-10);
         assert_relative_eq!(torques.z, 0.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_torque_signs_match_px4_mixer() {
+        // Validates torque formula signs against PX4 Standard Quad X mixer.
+        // PX4 mixer for +roll: increases ch1(BL) + ch2(FL), decreases ch0(FR) + ch3(BR)
+        // PX4 mixer for +pitch: increases ch0(FR) + ch2(FL), decreases ch1(BL) + ch3(BR)  [nose up = negative pitch in FRD]
+        // PX4 mixer for +yaw: increases ch0(FR) + ch1(BL) [CCW], decreases ch2(FL) + ch3(BR) [CW]
+        let config = PhysicsConfig::default();
+        let hover = config.hover_motor_speed();
+        let delta = hover * 0.1; // 10% perturbation
+
+        let mut state = QuadrotorState::at_hover(&config);
+
+        // +roll: increase left motors (2=BL=idx1, 3=FL=idx2), decrease right (1=FR=idx0, 4=BR=idx3)
+        state.motor_speeds = [hover - delta, hover + delta, hover + delta, hover - delta];
+        let torques = state.compute_torques(&config);
+        assert!(torques.x > 0.0, "Positive roll torque expected when left motors faster, got {}", torques.x);
+        assert!(torques.y.abs() < torques.x.abs() * 0.01, "Roll perturbation should not produce significant pitch");
+
+        // +pitch (nose up): increase front motors (1=FR=idx0, 3=FL=idx2), decrease rear (2=BL=idx1, 4=BR=idx3)
+        state.motor_speeds = [hover + delta, hover - delta, hover + delta, hover - delta];
+        let torques = state.compute_torques(&config);
+        assert!(torques.y > 0.0, "Positive pitch torque expected when front motors faster, got {}", torques.y);
+        assert!(torques.x.abs() < torques.y.abs() * 0.01, "Pitch perturbation should not produce significant roll");
+
+        // +yaw: increase CCW motors (1=FR=idx0, 2=BL=idx1), decrease CW (3=FL=idx2, 4=BR=idx3)
+        state.motor_speeds = [hover + delta, hover + delta, hover - delta, hover - delta];
+        let torques = state.compute_torques(&config);
+        assert!(torques.z > 0.0, "Positive yaw torque expected when CCW motors faster, got {}", torques.z);
     }
 
     #[test]
