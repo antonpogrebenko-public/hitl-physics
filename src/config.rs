@@ -71,12 +71,34 @@ impl PhysicsConfig {
         frame_weight_g: f64,
         motor_weight_g: f64,
     ) -> Self {
-        let prop_factor = match prop_diameter_inches as u32 {
+        Self::from_build_specs(kv, prop_diameter_inches, prop_diameter_inches * 0.9, 3, frame_weight_g, motor_weight_g)
+    }
+
+    pub fn from_build_specs(
+        kv: f64,
+        prop_diameter_inches: f64,
+        prop_pitch_inches: f64,
+        blade_count: i32,
+        frame_weight_g: f64,
+        motor_weight_g: f64,
+    ) -> Self {
+        // Base prop factor from diameter (empirical lookup)
+        let base_prop_factor = match prop_diameter_inches as u32 {
             0..=4 => 0.8e-6,
             5 => 1.9e-6,
             6 => 3.2e-6,
             _ => 5.0e-6,
         };
+
+        // Pitch multiplier: higher pitch = more thrust (linear approximation)
+        // Reference: 5x4.5 prop as baseline (~1.0)
+        let pitch_multiplier = 0.7 + 0.06 * prop_pitch_inches;
+
+        // Blade count multiplier: more blades = more thrust but diminishing returns
+        // 2-blade = 0.95, 3-blade = 1.0, 4-blade = 1.05, 5-blade = 1.10
+        let blade_multiplier = 0.85 + 0.05 * (blade_count as f64);
+
+        let prop_factor = base_prop_factor * pitch_multiplier * blade_multiplier;
 
         let kt = prop_factor * (2300.0 / kv).powi(2);
         let kq = kt * 0.026;
@@ -151,5 +173,20 @@ mod tests {
         assert!((config_small.mass_kg - 0.3).abs() < 1e-6);
         assert!(config_small.kt < config_5inch.kt);
         assert!(config_small.tau_motor < config_5inch.tau_motor);
+    }
+
+    #[test]
+    fn from_build_specs_pitch_and_blades_affect_kt() {
+        // Same motor/frame, different props
+        let low_pitch_2blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 3.0, 2, 350.0, 33.0);
+        let high_pitch_3blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 3, 350.0, 33.0);
+        let high_pitch_4blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 4, 350.0, 33.0);
+
+        // Higher pitch = higher kt
+        assert!(high_pitch_3blade.kt > low_pitch_2blade.kt);
+        // More blades = higher kt
+        assert!(high_pitch_4blade.kt > high_pitch_3blade.kt);
+        // Mass should be the same for all
+        assert!((low_pitch_2blade.mass_kg - high_pitch_4blade.mass_kg).abs() < 1e-10);
     }
 }
