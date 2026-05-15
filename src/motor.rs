@@ -85,11 +85,13 @@ pub fn compute_reaction_torque(motor_speed: f64, config: &PhysicsConfig) -> f64 
 // Electrical Model
 // =============================================================================
 
-/// Compute motor current draw from speed and load torque.
+/// Compute motor current draw from speed using torque-based model.
 ///
-/// Using simplified DC motor model:
-/// - Back-EMF voltage: V_bemf = ω / (KV × π/30)
-/// - Current: I = (V_battery - V_bemf) / R
+/// The motor produces aerodynamic torque τ = kq × ω², which requires current:
+/// I = τ / Kt_electrical + I_no_load
+///
+/// This is more accurate than the voltage-drop model (V-Vbemf)/R which
+/// underestimates back-EMF at low speeds and gives unrealistic currents.
 ///
 /// # Arguments
 /// * `motor_speed` - Motor speed in rad/s
@@ -98,11 +100,14 @@ pub fn compute_reaction_torque(motor_speed: f64, config: &PhysicsConfig) -> f64 
 /// # Returns
 /// Motor current in Amps
 pub fn compute_motor_current(motor_speed: f64, config: &PhysicsConfig) -> f64 {
-    // Convert rad/s to RPM for KV calculation
-    let rpm = motor_speed * 30.0 / std::f64::consts::PI;
-    let back_emf = rpm / config.motor_kv;
-    let current = (config.battery_voltage - back_emf) / config.motor_resistance_ohm;
-    current.max(0.0) // Current can't go negative (no regenerative braking modeled)
+    // Aerodynamic torque load on motor
+    let torque = config.kq * motor_speed * motor_speed;
+    // Current required to produce that torque: I = τ / Kt
+    // Kt_electrical = 60 / (2π × KV) in N·m/A
+    let load_current = torque / config.motor_kt_electrical;
+    // Add no-load current (friction, iron losses) ~0.5A typical for mini quad motors
+    let no_load_current = 0.5;
+    (load_current + no_load_current).max(0.0)
 }
 
 /// Compute electrical power consumed by motor.
@@ -237,31 +242,38 @@ mod tests {
     }
 
     #[test]
-    fn test_motor_current_at_no_load() {
+    fn test_motor_current_at_zero_speed() {
         let config = PhysicsConfig::default();
-        // At no-load speed (voltage / KV), current should be ~0
-        let no_load_rpm = config.motor_kv * config.battery_voltage;
-        let no_load_omega = no_load_rpm * std::f64::consts::PI / 30.0;
-        let current = compute_motor_current(no_load_omega, &config);
-        assert!(current < 1.0, "Current at no-load should be near zero, got {}", current);
-    }
-
-    #[test]
-    fn test_motor_current_at_stall() {
-        let config = PhysicsConfig::default();
-        // At stall (0 RPM), current = V / R
+        // At 0 rad/s, torque is zero so current = no-load only (0.5A)
         let current = compute_motor_current(0.0, &config);
-        let expected = config.battery_voltage / config.motor_resistance_ohm;
-        assert!((current - expected).abs() < 0.1, "Stall current mismatch");
+        assert!((current - 0.5).abs() < 0.01, "Zero-speed current should be no-load, got {}", current);
     }
 
     #[test]
-    fn test_motor_heat_increases_with_current() {
+    fn test_motor_current_increases_with_speed() {
+        let config = PhysicsConfig::default();
+        let current_low = compute_motor_current(500.0, &config);
+        let current_high = compute_motor_current(1500.0, &config);
+        // Higher speed = more torque load = more current
+        assert!(current_high > current_low, "Current should increase with speed");
+    }
+
+    #[test]
+    fn test_motor_current_reasonable_at_hover() {
+        let config = PhysicsConfig::default();
+        let hover_omega = config.hover_motor_speed();
+        let current = compute_motor_current(hover_omega, &config);
+        // Hover current for a 2kg quad on 4S should be ~5-15A per motor
+        assert!(current > 3.0 && current < 20.0, "Hover current unrealistic: {} A", current);
+    }
+
+    #[test]
+    fn test_motor_heat_increases_with_speed() {
         let config = PhysicsConfig::default();
         let heat_low = compute_motor_heat(500.0, &config);
         let heat_high = compute_motor_heat(1500.0, &config);
-        // Lower speed = higher current (more back-EMF headroom) = more heat
-        assert!(heat_low > heat_high, "Lower speed should generate more heat");
+        // Higher speed = more current = more I²R heat
+        assert!(heat_high > heat_low, "Higher speed should generate more heat");
     }
 
     #[test]
