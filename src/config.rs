@@ -156,9 +156,16 @@ impl PhysicsConfig {
         let tau_motor = 0.02 + (1500.0 / kv) * 0.01;
         let mass_kg = (frame_weight_g + 4.0 * motor_weight_g) / 1000.0;
         let arm_length_m = prop_diameter_inches * 0.0254 * 1.1;
-        let ixx = mass_kg * arm_length_m * arm_length_m * 0.5;
+        // Inertia estimation: motors at arm tips dominate (point-mass model)
+        // Ixx = Iyy ≈ 4 × m_motor × L² + frame_contribution
+        // Izz ≈ 4 × m_motor × L² × 2 (all 4 arms contribute to yaw)
+        // Clamp Izz >= 0.020 to avoid yaw oscillation with PX4 default PIDs
+        let motor_mass_kg = motor_weight_g / 1000.0;
+        let motor_inertia = 4.0 * motor_mass_kg * arm_length_m * arm_length_m;
+        let frame_inertia = (frame_weight_g / 1000.0) * arm_length_m * arm_length_m * 0.17;
+        let ixx = motor_inertia + frame_inertia;
         let iyy = ixx;
-        let izz = mass_kg * arm_length_m * arm_length_m * 0.8;
+        let izz = (motor_inertia * 2.0 + frame_inertia).max(0.020);
 
         // Estimate motor resistance from stator size (larger = lower resistance)
         // Typical: 2306 ~0.065Ω, 2207 ~0.080Ω, 1404 ~0.150Ω
@@ -261,6 +268,8 @@ mod tests {
         assert!(config.tau_motor > 0.025 && config.tau_motor < 0.035);
         assert!(config.inertia[2] > config.inertia[0]);
         assert!(config.inertia[0] > 0.0);
+        // Izz must be >= 0.020 to avoid yaw oscillation with PX4 default PIDs
+        assert!(config.inertia[2] >= 0.020, "Izz={} too low for PX4 yaw stability", config.inertia[2]);
     }
 
     #[test]

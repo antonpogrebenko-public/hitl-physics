@@ -24,12 +24,16 @@
 //! let new_state = rk4_step(&state, &config, motor_commands, DEFAULT_DT);
 //! ```
 
+pub mod battery;
 pub mod config;
 pub mod integrator;
 pub mod motor;
 pub mod quadrotor;
 
 // Re-export main types
+pub use battery::{
+    estimate_flight_time_min, total_motor_current, BatteryConfig, BatteryState,
+};
 pub use config::PhysicsConfig;
 pub use integrator::{rk4_step, simulate, DEFAULT_DT};
 pub use motor::{

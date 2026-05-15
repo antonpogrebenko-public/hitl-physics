@@ -27,15 +27,15 @@ state = integrate_rk4(&state, &config, motor_commands, 0.0025);  // 400 Hz
 
 ```
     Front (nose)
-  1(CW)   2(CCW)
+  3(CW)   1(CCW)
      \   /
        X
      /   \
-  4(CCW) 3(CW)
+  2(CCW) 4(CW)
     Back
 ```
 
-After PX4→Sim remapping, motors 1 and 3 spin CW, motors 2 and 4 spin CCW.
+PX4 Standard Quad X — identity mapping (no remapping). Motors 1,2 are CCW; motors 3,4 are CW.
 
 ## Configuration
 
@@ -78,9 +78,9 @@ wasm-pack build --target web
 
 ### Yaw torque formula
 ```rust
-let tau_yaw = -q1 + q2 - q3 + q4;
+let tau_yaw = q1 + q2 - q3 - q4;
 ```
-Motors 1,3 spin CW (negative reaction), motors 2,4 spin CCW (positive reaction).
+CCW motors (1=FR, 2=BL) produce positive yaw torque. CW motors (3=FL, 4=BR) produce negative.
 
 ### Inertia tuning for PX4
-Higher Izz (0.025) reduces yaw oscillation with PX4's default PIDs. Lower values cause rapid yaw hunting.
+Izz must be >= 0.020 for stable yaw with PX4's default PIDs. `from_build_specs` enforces this floor. Lower values cause rapid yaw hunting (same-direction motors oscillating high/low cyclically).
