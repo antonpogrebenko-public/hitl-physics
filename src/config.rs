@@ -152,7 +152,11 @@ impl PhysicsConfig {
         let prop_factor = base_prop_factor * pitch_multiplier * blade_multiplier;
 
         let kt = prop_factor * (2300.0 / kv).powi(2);
-        let kq = kt * 0.026;
+        // kq/kt ratio depends on prop efficiency:
+        // Low-pitch 2-blade (~0.012) to high-pitch 5-blade (~0.035)
+        // Base ratio 0.015 for a 2-blade 3-pitch, scales with pitch and blade count
+        let kq_kt_ratio = 0.010 + 0.002 * prop_pitch_inches + 0.002 * (blade_count as f64);
+        let kq = kt * kq_kt_ratio;
         let tau_motor = 0.02 + (1500.0 / kv) * 0.01;
         let mass_kg = (frame_weight_g + 4.0 * motor_weight_g) / 1000.0;
         let arm_length_m = prop_diameter_inches * 0.0254 * 1.1;
@@ -264,7 +268,9 @@ mod tests {
         assert!((config.mass_kg - 0.482).abs() < 1e-6);
         assert!((config.arm_length_m - 0.1397).abs() < 1e-4);
         assert!(config.kt > 3.0e-6 && config.kt < 4.0e-6);
-        assert!((config.kq - config.kt * 0.026).abs() < 1e-12);
+        // kq/kt ratio for 3-blade 4.5-pitch (default from_motor_specs): 0.010 + 0.002*4.5 + 0.002*3 = 0.025
+        let expected_ratio = 0.010 + 0.002 * (5.0 * 0.9) + 0.002 * 3.0;
+        assert!((config.kq - config.kt * expected_ratio).abs() < 1e-12);
         assert!(config.tau_motor > 0.025 && config.tau_motor < 0.035);
         assert!(config.inertia[2] > config.inertia[0]);
         assert!(config.inertia[0] > 0.0);
