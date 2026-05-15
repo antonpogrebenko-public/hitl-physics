@@ -25,16 +25,26 @@
 //! ```
 
 pub mod battery;
+pub mod build;
 pub mod config;
+pub mod conservation;
 pub mod integrator;
 pub mod motor;
+pub mod prop_coefficients;
+pub mod px4_pids;
 pub mod quadrotor;
 
 // Re-export main types
 pub use battery::{
-    estimate_flight_time_min, total_motor_current, BatteryConfig, BatteryState,
+    estimate_flight_time_min, estimate_r_internal_ohm, total_motor_current, BatteryConfig,
+    BatteryState,
 };
-pub use config::PhysicsConfig;
+pub use build::{
+    BaroChip, BaroProfile, BatterySpec, BuildSpec, EscFirmware, EscSpec, FlightControllerSpec,
+    FrameMaterial, FrameSpec, GpsChipset, GpsProfile, GpsSpec, ImuChip, ImuProfile, MagChip,
+    MagProfile, MotorSpec, PropellerSpec, SensorProfiles, StatorSize,
+};
+pub use config::{EscConfig, PhysicsConfig};
 pub use integrator::{rk4_step, simulate, DEFAULT_DT};
 pub use motor::{
     apply_thermal_derating, compute_electrical_power, compute_motor_current, compute_motor_heat,

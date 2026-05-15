@@ -1,5 +1,39 @@
 //! Physical parameters for quadrotor simulation.
 
+/// Electronic Speed Controller configuration.
+///
+/// Currently used as a data carrier — Phase 2a wires `EscConfig` through the
+/// BuildSpec → PhysicsConfig pipeline so the daemon has access to ESC
+/// parameters per build. Loop integration (response cascade, current limit,
+/// brake mode) is deferred until protocol/state changes can be coordinated
+/// with the WebSocket binary format.
+#[derive(Debug, Clone)]
+pub struct EscConfig {
+    /// Continuous current per ESC channel (Amps).
+    pub continuous_amps: f64,
+    /// Burst current per ESC channel (Amps).
+    pub burst_amps: f64,
+    /// How long burst can be sustained before falling back to continuous (s).
+    pub burst_duration_s: f64,
+    /// Command response time constant (first-order filter, s).
+    pub response_tau_s: f64,
+    /// Whether regenerative braking is enabled (BLHeli32 default: true).
+    pub brake_enabled: bool,
+}
+
+impl Default for EscConfig {
+    fn default() -> Self {
+        // Typical 5" 4-in-1 race ESC with BLHeli32 + DShot600.
+        Self {
+            continuous_amps: 45.0,
+            burst_amps: 55.0,
+            burst_duration_s: 5.0,
+            response_tau_s: 0.003, // 3 ms decode + smoothing
+            brake_enabled: true,
+        }
+    }
+}
+
 /// Physical configuration for a quadrotor.
 ///
 /// Default values are for a typical 5-inch racing quad.
@@ -31,6 +65,12 @@ pub struct PhysicsConfig {
     pub battery_voltage: f64,
     /// Motor torque constant Kt in N·m/A (derived from KV: Kt = 60 / (2π * KV))
     pub motor_kt_electrical: f64,
+    /// No-load (idle) current draw per motor in Amps — covers bearing friction,
+    /// iron losses, and ESC quiescent draw. Typical 0.3-1.5 A for mini-quad motors.
+    pub motor_no_load_amps: f64,
+
+    // ESC parameters (Phase 2a — data-carrier only, not yet used in loop)
+    pub esc: EscConfig,
 
     // Thermal parameters
     /// Motor thermal mass in J/K (winding + stator heat capacity)
@@ -58,7 +98,7 @@ impl Default for PhysicsConfig {
             kt: 1.9e-6,                       // thrust = kt * ω², gives ~12N at 2500 rad/s
             kq: 5.0e-8,                       // torque = kq * ω², kq/kt ≈ 0.026 (aggressive 5" prop)
             tau_motor: 0.025,                 // 25ms motor time constant
-            drag_coeffs: [0.25, 0.25, 0.15],
+            drag_coeffs: [0.016, 0.016, 0.022], // 5" quad: 0.5*ρ*Cd*A ≈ 0.016 lateral, 0.022 vertical
             gravity: 9.80665,
 
             // Electrical parameters for 2306 motor
@@ -66,6 +106,8 @@ impl Default for PhysicsConfig {
             motor_resistance_ohm: 0.065,      // Typical 2306 motor winding resistance
             battery_voltage: 14.8,            // 4S LiPo nominal (4 × 3.7V)
             motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * motor_kv),
+            motor_no_load_amps: 0.5,          // Quiescent draw — was hardcoded in motor.rs
+            esc: EscConfig::default(),
 
             // Thermal parameters (estimated for 2306 motor ~33g)
             thermal_mass_j_per_k: 15.0,       // Copper windings + stator mass
@@ -105,6 +147,8 @@ impl PhysicsConfig {
             motor_resistance_ohm: defaults.motor_resistance_ohm,
             battery_voltage: defaults.battery_voltage,
             motor_kt_electrical: defaults.motor_kt_electrical,
+            motor_no_load_amps: defaults.motor_no_load_amps,
+            esc: defaults.esc,
             thermal_mass_j_per_k: defaults.thermal_mass_j_per_k,
             thermal_dissipation_w_per_k: defaults.thermal_dissipation_w_per_k,
             ambient_temp_c: defaults.ambient_temp_c,
@@ -163,13 +207,17 @@ impl PhysicsConfig {
         // Inertia estimation: motors at arm tips dominate (point-mass model)
         // Ixx = Iyy ≈ 4 × m_motor × L² + frame_contribution
         // Izz ≈ 4 × m_motor × L² × 2 (all 4 arms contribute to yaw)
-        // Clamp Izz >= 0.020 to avoid yaw oscillation with PX4 default PIDs
+        //
+        // Phase 1+6: legacy `0.012` / `0.020` floors removed. The floors existed
+        // so PX4's default rate PIDs (tuned for ~5" inertia) didn't oscillate
+        // on light builds. The daemon now pushes per-build PIDs computed by
+        // `px4_pids::compute_pids` before flight, so real inertia can be used.
         let motor_mass_kg = motor_weight_g / 1000.0;
         let motor_inertia = 4.0 * motor_mass_kg * arm_length_m * arm_length_m;
         let frame_inertia = (frame_weight_g / 1000.0) * arm_length_m * arm_length_m * 0.17;
         let ixx = motor_inertia + frame_inertia;
         let iyy = ixx;
-        let izz = (motor_inertia * 2.0 + frame_inertia).max(0.020);
+        let izz = motor_inertia * 2.0 + frame_inertia;
 
         // Estimate motor resistance from stator size (larger = lower resistance)
         // Typical: 2306 ~0.065Ω, 2207 ~0.080Ω, 1404 ~0.150Ω
@@ -182,6 +230,12 @@ impl PhysicsConfig {
         // Thermal dissipation improves with prop airflow (larger prop = better cooling)
         let thermal_dissipation_w_per_k = 0.5 + 0.1 * prop_diameter_inches;
 
+        // Drag: F = c × v × |v|, where c ≈ 0.5 × ρ × Cd × A
+        // Frontal area scales with prop diameter squared; Cd ≈ 1.0-1.3 for a quad frame
+        let frontal_area_m2 = (prop_diameter_inches * 0.0254).powi(2) * 1.5; // ~1.5× prop disc overlap
+        let drag_lateral = 0.5 * 1.225 * 1.1 * frontal_area_m2; // ρ=1.225, Cd≈1.1
+        let drag_vertical = 0.5 * 1.225 * 1.5 * frontal_area_m2; // higher Cd for flat bottom
+
         Self {
             mass_kg,
             arm_length_m,
@@ -189,7 +243,7 @@ impl PhysicsConfig {
             kt,
             kq,
             tau_motor,
-            drag_coeffs: [0.25, 0.25, 0.15],
+            drag_coeffs: [drag_lateral, drag_lateral, drag_vertical],
             gravity: 9.80665,
 
             // Electrical parameters
@@ -197,6 +251,8 @@ impl PhysicsConfig {
             motor_resistance_ohm,
             battery_voltage,
             motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * kv),
+            motor_no_load_amps: 0.5,
+            esc: EscConfig::default(),
 
             // Thermal parameters
             thermal_mass_j_per_k,
@@ -222,6 +278,53 @@ impl PhysicsConfig {
     pub fn max_motor_speed_from_voltage(&self) -> f64 {
         let max_rpm = self.motor_kv * self.battery_voltage;
         max_rpm * std::f64::consts::PI / 30.0 // RPM to rad/s
+    }
+
+    /// Hover throttle as a percentage of max motor speed (0.0–1.0).
+    ///
+    /// This is what a pilot sees on their OSD: e.g., 0.35 means 35% throttle to hover.
+    pub fn hover_throttle_percent(&self) -> f64 {
+        self.hover_motor_speed() / self.max_motor_speed_from_voltage()
+    }
+
+    /// Estimated hover current draw in Amps (all 4 motors combined).
+    ///
+    /// Uses the torque-based motor current model: I = kq·ω²/Kt + I_no_load
+    pub fn estimated_hover_current_a(&self) -> f64 {
+        let omega = self.hover_motor_speed();
+        let torque_per_motor = self.kq * omega * omega;
+        let current_per_motor = torque_per_motor / self.motor_kt_electrical + self.motor_no_load_amps;
+        4.0 * current_per_motor
+    }
+
+    /// Estimated max climb rate in m/s at full throttle (simplified model).
+    ///
+    /// Assumes excess thrust accelerates the quad until drag balances it.
+    /// F_excess = 4·kt·ω_max² − m·g; terminal velocity where F_drag = F_excess.
+    pub fn estimated_max_climb_rate_mps(&self) -> f64 {
+        let omega_max = self.max_motor_speed_from_voltage();
+        let f_max = 4.0 * self.kt * omega_max * omega_max;
+        let f_excess = f_max - self.mass_kg * self.gravity;
+        if f_excess <= 0.0 {
+            return 0.0; // Underpowered — can't climb
+        }
+        // F_drag = c_z · v², solve for v
+        let c_z = self.drag_coeffs[2];
+        (f_excess / c_z).sqrt()
+    }
+
+    /// Estimated flight time at hover in seconds.
+    ///
+    /// This is a rough estimate: `capacity_mah / 1000 × 3600 / hover_current_a × 0.8`
+    /// (80% usable capacity before LVC).
+    pub fn estimated_hover_time_s(&self, capacity_mah: f64) -> f64 {
+        let hover_current = self.estimated_hover_current_a();
+        if hover_current < 0.1 {
+            return f64::INFINITY; // Unrealistic
+        }
+        let capacity_ah = capacity_mah / 1000.0;
+        let usable_capacity_ah = capacity_ah * 0.8; // 80% before LVC
+        usable_capacity_ah * 3600.0 / hover_current
     }
 
     /// Calculate power derating factor based on motor temperature.
@@ -274,8 +377,32 @@ mod tests {
         assert!(config.tau_motor > 0.025 && config.tau_motor < 0.035);
         assert!(config.inertia[2] > config.inertia[0]);
         assert!(config.inertia[0] > 0.0);
-        // Izz must be >= 0.020 to avoid yaw oscillation with PX4 default PIDs
-        assert!(config.inertia[2] >= 0.020, "Izz={} too low for PX4 yaw stability", config.inertia[2]);
+        // Phase 1+6: floors removed. Real inertia for a 5" 1700KV 350g/33g
+        // build sits around Ixx≈0.0037, Izz≈0.0063 — the daemon's Phase 6
+        // PARAM_SET push scales PX4's rate PIDs to match. Assert physical
+        // bounds only.
+        assert!(config.inertia[0] < 0.012,
+            "post-Phase-1 Ixx={} should be below the old floor", config.inertia[0]);
+        assert!(config.inertia[2] > config.inertia[0],
+            "Izz must exceed Ixx for a planar quadrotor");
+    }
+
+    #[test]
+    fn from_motor_specs_lightweight_build_stable() {
+        // 1800KV, 5" 2-blade, 350g frame, 33g motors. Pre-Phase-1 this hit
+        // the inertia floor; post-Phase-1+6 the daemon's per-build PIDs
+        // handle the real low-inertia airframe directly.
+        let config = PhysicsConfig::from_motor_specs(1800.0, 5.0, 350.0, 33.0);
+        assert!(config.inertia[0] > 0.0);
+        assert!(config.inertia[0] < 0.012,
+            "Ixx={} should be below the legacy floor without the override",
+            config.inertia[0]);
+        // Hover omega should be reasonable
+        let hover = config.hover_motor_speed();
+        let max = config.max_motor_speed_from_voltage();
+        let hover_ratio = hover / max;
+        assert!(hover_ratio > 0.15 && hover_ratio < 0.6,
+            "Hover/max ratio {} out of range", hover_ratio);
     }
 
     #[test]

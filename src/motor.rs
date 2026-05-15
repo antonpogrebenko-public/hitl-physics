@@ -105,9 +105,9 @@ pub fn compute_motor_current(motor_speed: f64, config: &PhysicsConfig) -> f64 {
     // Current required to produce that torque: I = τ / Kt
     // Kt_electrical = 60 / (2π × KV) in N·m/A
     let load_current = torque / config.motor_kt_electrical;
-    // Add no-load current (friction, iron losses) ~0.5A typical for mini quad motors
-    let no_load_current = 0.5;
-    (load_current + no_load_current).max(0.0)
+    // Add no-load current (bearing friction, iron losses, ESC quiescent draw).
+    // Configurable per-build via `MotorSpec::no_load_amps`; defaults to 0.5 A.
+    (load_current + config.motor_no_load_amps).max(0.0)
 }
 
 /// Compute electrical power consumed by motor.

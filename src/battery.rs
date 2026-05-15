@@ -3,6 +3,18 @@
 use crate::config::PhysicsConfig;
 use crate::motor::compute_motor_current;
 
+/// Estimate total internal resistance for a LiPo pack from cell count and C rating.
+///
+/// Empirical fit: `R_per_cell ≈ 200 / C` (milliohms). Real-world data:
+/// - 75C 4S race LiPo: ~2.7 mΩ/cell → ~11 mΩ total
+/// - 25C 4S standard: ~8 mΩ/cell → ~32 mΩ total
+///
+/// Cells in series sum. Returned value is in ohms.
+pub fn estimate_r_internal_ohm(cell_count: u8, c_rating: f64) -> f64 {
+    let r_per_cell_mohm = 200.0 / c_rating.max(1.0);
+    cell_count as f64 * r_per_cell_mohm / 1000.0
+}
+
 /// Battery configuration derived from cell count and capacity.
 #[derive(Debug, Clone)]
 pub struct BatteryConfig {
@@ -12,14 +24,19 @@ pub struct BatteryConfig {
     pub capacity_mah: f64,
     /// Maximum continuous discharge rate (C rating)
     pub discharge_rate_c: f64,
+    /// Total pack internal resistance in ohms (Phase 2b — used by `BatteryState::v_terminal`).
+    pub internal_resistance_ohm: f64,
 }
 
 impl Default for BatteryConfig {
     fn default() -> Self {
+        let cell_count = 4u8;
+        let c_rating = 75.0;
         Self {
-            cell_count: 4,
+            cell_count,
             capacity_mah: 1500.0,
-            discharge_rate_c: 75.0,
+            discharge_rate_c: c_rating,
+            internal_resistance_ohm: estimate_r_internal_ohm(cell_count, c_rating),
         }
     }
 }
@@ -30,6 +47,7 @@ impl BatteryConfig {
             cell_count,
             capacity_mah,
             discharge_rate_c,
+            internal_resistance_ohm: estimate_r_internal_ohm(cell_count, discharge_rate_c),
         }
     }
 
@@ -91,12 +109,23 @@ impl BatteryState {
         (self.soc() * 100.0).round() as u8
     }
 
-    /// Current voltage based on discharge curve.
+    /// Current voltage based on discharge curve (open-circuit / no-load).
     /// Uses a simplified LiPo curve: mostly flat at nominal, drops at extremes.
     pub fn voltage(&self) -> f64 {
         let soc = self.soc();
         let per_cell = lipo_voltage_curve(soc);
         per_cell * self.cell_count as f64
+    }
+
+    /// Terminal voltage under load (Phase 2b).
+    ///
+    /// `V_terminal = V_OCV(soc) - I · R_internal`, clamped to 0.
+    /// Use this whenever you care about the voltage *the motors actually see*.
+    /// The OCV `voltage()` method is appropriate for "battery percent" displays
+    /// because it ignores transient sag.
+    pub fn v_terminal(&self, load_amps: f64, r_internal_ohm: f64) -> f64 {
+        let sag = load_amps * r_internal_ohm;
+        (self.voltage() - sag).max(0.0)
     }
 
     /// Consume charge based on total current draw over dt seconds.
