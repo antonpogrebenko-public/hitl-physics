@@ -142,3 +142,15 @@ Hardcoded drag values (e.g., 0.25) give unrealistic max speeds (~4 m/s). Always 
 
 ### Battery depletion kills motors
 When `BatteryState::is_depleted()` returns true (SoC < 5%), the simulation loop must zero motor commands. The physics library doesn't enforce this — the daemon loop does.
+
+### Thermal derating is applied inside `state_derivative` (not externally)
+`apply_thermal_derating()` is called in `quadrotor.rs` inside the per-motor derivative computation. A motor that reaches shutdown temperature coasts smoothly to zero thrust — the daemon loop does **not** need to apply derating separately. Do not double-apply from outside.
+
+### Motor speeds are clamped to `>= 0.0` in the integrator
+`integrator.rs` clamps motor speeds to non-negative values both in the `rk4_step` final assembly and in `apply_derivative` intermediate states. This prevents negative RPM artifacts from numerical overshoot (e.g., after a hard cutoff). Any code that post-processes motor state should expect values `>= 0.0`.
+
+### `compute_electrical_power` requires explicit terminal voltage
+The signature is `compute_electrical_power(terminal_voltage: f64, ...)` — it no longer reads `config.battery_voltage`. Callers must pass the actual terminal voltage from the current `BatteryState`. Pass nominal voltage (`config.battery_voltage`) only as a fallback when no battery state is available (e.g., unit tests).
+
+### `fingerprint()` in `px4_pids.rs` uses deterministic FNV-1a
+The PID config fingerprint replaced `DefaultHasher` with FNV-1a over f32 bit patterns. The hash is now stable across process restarts and platforms. If you serialize fingerprints (e.g., to localStorage or logs), old values computed with `DefaultHasher` are invalidated and will trigger a config resend on the next daemon start.
