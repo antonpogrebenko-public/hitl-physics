@@ -21,6 +21,14 @@ pub const MIN_MOTOR_SPEED: f64 = 100.0;
 pub fn throttle_to_omega_with_config(throttle: f64, config: &PhysicsConfig) -> f64 {
     let clamped = throttle.clamp(0.0, 1.0);
     let max_speed = config.max_motor_speed_from_voltage();
+    // Linear cmd → ω matches how real ESCs behave (BLHeli, Bluejay, etc.).
+    // PX4's `THR_MDL_FAC=1` parameter compensates for the resulting quadratic
+    // cmd → thrust by outputting `sqrt(thr_desired)` to the actuator.
+    //
+    // Do NOT switch to ω² interpolation: the resulting sqrt has a near-vertical
+    // slope at cmd=0 (dω/dcmd ≈ MAX²/(2·MIN), ~16× steeper than linear), which
+    // amplifies tiny rate-controller PID outputs into massive motor RPM swings
+    // and causes visible motor trembling at idle / pre-takeoff.
     MIN_MOTOR_SPEED + clamped * (max_speed - MIN_MOTOR_SPEED)
 }
 
@@ -197,7 +205,10 @@ mod tests {
     fn test_throttle_to_omega_bounds() {
         assert!((throttle_to_omega(0.0) - MIN_MOTOR_SPEED).abs() < 1e-10);
         assert!((throttle_to_omega(1.0) - DEFAULT_MAX_MOTOR_SPEED).abs() < 1e-10);
-        assert!((throttle_to_omega(0.5) - (MIN_MOTOR_SPEED + DEFAULT_MAX_MOTOR_SPEED) / 2.0).abs() < 1e-10);
+        assert!(
+            (throttle_to_omega(0.5) - (MIN_MOTOR_SPEED + DEFAULT_MAX_MOTOR_SPEED) / 2.0).abs()
+                < 1e-10
+        );
     }
 
     #[test]
