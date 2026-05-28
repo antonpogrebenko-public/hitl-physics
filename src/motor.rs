@@ -5,8 +5,21 @@ use crate::config::PhysicsConfig;
 /// Default maximum motor speed in rad/s (fallback when voltage not specified)
 pub const DEFAULT_MAX_MOTOR_SPEED: f64 = 2500.0;
 
-/// Minimum motor speed in rad/s (idle)
-pub const MIN_MOTOR_SPEED: f64 = 100.0;
+/// Minimum motor speed in rad/s.
+///
+/// Set to 0 so a `throttle=0` command produces a fully stopped motor —
+/// matching real PX4 + DSHOT/BLHeli behavior where PWM at idle stops the
+/// rotor unless the user explicitly enables an ESC idle setting. PX4 does
+/// not enforce a controller-side idle floor.
+///
+/// Prior value of 100 rad/s (≈955 RPM) showed up in the web UI as motor
+/// RPM "jumping" while armed-on-ground: PX4's rate controller fires tiny
+/// micro-corrections at 400 Hz, the `motors_active = any(cmd > 0.01)` gate
+/// in `loop_runner.rs` toggled the physics step on/off, and every step
+/// snapped all four motors to the 955 RPM floor before going back to 0.
+/// With this floor at 0, the conversion is purely linear and idle stays
+/// idle.
+pub const MIN_MOTOR_SPEED: f64 = 0.0;
 
 /// Convert throttle command (0.0 to 1.0) to commanded motor speed (rad/s).
 ///
@@ -120,17 +133,29 @@ pub fn compute_motor_current(motor_speed: f64, config: &PhysicsConfig) -> f64 {
 
 /// Compute electrical power consumed by motor.
 ///
-/// P_electrical = V × I
+/// P_electrical = V_terminal × I
+///
+/// Uses the actual terminal voltage (open-circuit voltage minus resistive sag)
+/// so that energy accounting is correct under load. Callers that don't have
+/// access to a live `BatteryState` may pass `config.battery_voltage` as an
+/// approximation (static nominal — no sag modelled).
 ///
 /// # Arguments
 /// * `motor_speed` - Motor speed in rad/s
+/// * `terminal_voltage` - Actual terminal voltage seen by the motor (Volts).
+///   Pass `config.battery_voltage` when a live battery state is unavailable
+///   (documented approximation — ignores resistive sag).
 /// * `config` - Physics configuration
 ///
 /// # Returns
 /// Electrical power in Watts
-pub fn compute_electrical_power(motor_speed: f64, config: &PhysicsConfig) -> f64 {
+pub fn compute_electrical_power(
+    motor_speed: f64,
+    terminal_voltage: f64,
+    config: &PhysicsConfig,
+) -> f64 {
     let current = compute_motor_current(motor_speed, config);
-    config.battery_voltage * current
+    terminal_voltage * current
 }
 
 /// Compute heat generated in motor windings (I²R losses).

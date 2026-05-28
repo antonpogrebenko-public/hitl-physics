@@ -1,7 +1,7 @@
 //! Quadrotor state vector and rigid body dynamics.
 
 use crate::config::PhysicsConfig;
-use crate::motor::{compute_reaction_torque, compute_thrust, motor_temp_derivative};
+use crate::motor::{apply_thermal_derating, compute_reaction_torque, compute_thrust, motor_temp_derivative};
 use nalgebra::{UnitQuaternion, Vector3};
 
 /// Complete state of a quadrotor in NED frame.
@@ -214,12 +214,13 @@ impl QuadrotorState {
             (torque.z - gyro_term.z) / izz,
         ];
 
-        // Motor dynamics
+        // Motor dynamics — apply thermal derating before computing derivative so
+        // an overheating motor cannot respond to full-throttle commands.
         let motor_derivs = [
-            (motor_commands[0] - self.motor_speeds[0]) / config.tau_motor,
-            (motor_commands[1] - self.motor_speeds[1]) / config.tau_motor,
-            (motor_commands[2] - self.motor_speeds[2]) / config.tau_motor,
-            (motor_commands[3] - self.motor_speeds[3]) / config.tau_motor,
+            (apply_thermal_derating(motor_commands[0], self.motor_temps[0], config) - self.motor_speeds[0]) / config.tau_motor,
+            (apply_thermal_derating(motor_commands[1], self.motor_temps[1], config) - self.motor_speeds[1]) / config.tau_motor,
+            (apply_thermal_derating(motor_commands[2], self.motor_temps[2], config) - self.motor_speeds[2]) / config.tau_motor,
+            (apply_thermal_derating(motor_commands[3], self.motor_temps[3], config) - self.motor_speeds[3]) / config.tau_motor,
         ];
 
         // Thermal dynamics

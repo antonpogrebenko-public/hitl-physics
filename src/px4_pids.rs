@@ -117,19 +117,25 @@ pub fn compute_pids(physics: &PhysicsConfig) -> Px4Pids {
 /// Stable fingerprint of computed PIDs. Useful for caching: the daemon can
 /// compare two fingerprints and skip the `PARAM_SET` sequence on reconfigure
 /// when the gains haven't actually changed.
+///
+/// Uses FNV-1a over the raw f32 bit patterns — fully deterministic across
+/// process restarts (unlike `DefaultHasher`, which uses a random seed).
 pub fn fingerprint(pids: &Px4Pids) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    // Hash the bit pattern so floats compare exactly. NaN handling is fine
-    // here because compute_pids never emits NaN (guarded above).
-    for v in [
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x00000100000001b3;
+
+    let mut hash = FNV_OFFSET;
+    for &val in &[
         pids.roll_p, pids.roll_i, pids.roll_d, pids.roll_ff,
         pids.pitch_p, pids.pitch_i, pids.pitch_d, pids.pitch_ff,
         pids.yaw_p, pids.yaw_i, pids.yaw_d, pids.yaw_ff,
     ] {
-        v.to_bits().hash(&mut hasher);
+        for byte in val.to_bits().to_le_bytes() {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
     }
-    hasher.finish()
+    hash
 }
 
 #[cfg(test)]
