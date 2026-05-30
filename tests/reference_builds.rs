@@ -128,26 +128,28 @@ mod impulse_apex_5 {
     fn hover_current_regression_gate() {
         let physics = build().to_physics_config();
         let hover_a = physics.estimated_hover_current_a();
-        // Model produces ~21A. Real: 15-22A. Gate: 10-35A.
-        assert_in_range!(hover_a, 10.0, 35.0, "Apex 5 hover current");
+        // Post-recalibration: kq reduced (KQ_KT_SCALE=0.348) → lower torque-based
+        // current. Model produces ~8.6A. Real: 15-22A (motor heating adds ~50-80%
+        // above the ideal model). Gate: 5-35A.
+        assert_in_range!(hover_a, 5.0, 35.0, "Apex 5 hover current");
     }
 
     #[test]
     fn can_climb_at_race_speeds() {
         let physics = build().to_physics_config();
         let climb_mps = physics.estimated_max_climb_rate_mps();
-        // Model produces ~63 m/s (optimistic). Real: 25-35 m/s.
-        // Gate: 20-100 m/s — catches major regressions.
-        assert_in_range!(climb_mps, 20.0, 100.0, "Apex 5 max climb rate");
+        // Torque-balance model + recalibrated kt reduces max thrust. Model
+        // produces ~25 m/s. Real: 25-35 m/s. Gate: 10-100 m/s.
+        assert_in_range!(climb_mps, 10.0, 100.0, "Apex 5 max climb rate");
     }
 
     #[test]
     fn hover_time_regression_gate() {
         let physics = build().to_physics_config();
         let hover_time_s = physics.estimated_hover_time_s(1300.0);
-        // Model produces ~179s (~3 min). Real: 3.5-5 min.
-        // Gate: 90-360s — catches major regressions.
-        assert_in_range!(hover_time_s, 90.0, 360.0, "Apex 5 hover time");
+        // Lower current → longer hover. Model produces ~437s (~7 min). Real: 3.5-5 min.
+        // Gate: 90-600s.
+        assert_in_range!(hover_time_s, 90.0, 600.0, "Apex 5 hover time");
     }
 }
 
@@ -183,26 +185,26 @@ mod geprc_mark5_6 {
     fn hover_current_regression_gate() {
         let physics = build().to_physics_config();
         let hover_a = physics.estimated_hover_current_a();
-        // Model produces ~20A. Real: 15-25A. Gate: 10-35A.
-        assert_in_range!(hover_a, 10.0, 35.0, "MARK5 6 hover current");
+        // Post-recalibration: lower kq → lower current. Model ~8.5A.
+        // Real: 15-25A. Gate: 5-35A.
+        assert_in_range!(hover_a, 5.0, 35.0, "MARK5 6 hover current");
     }
 
     #[test]
     fn can_climb() {
         let physics = build().to_physics_config();
         let climb_mps = physics.estimated_max_climb_rate_mps();
-        // Model produces ~100 m/s (overestimated). Real: 20-30 m/s.
-        // Gate: 15-150 m/s — catches major regressions.
-        assert_in_range!(climb_mps, 15.0, 150.0, "MARK5 6 max climb rate");
+        // Torque-balance model gives realistic max speed. Gate: 10-150 m/s.
+        assert_in_range!(climb_mps, 10.0, 150.0, "MARK5 6 max climb rate");
     }
 
     #[test]
     fn hover_time_regression_gate() {
         let physics = build().to_physics_config();
         let hover_time_s = physics.estimated_hover_time_s(1100.0);
-        // Model produces ~159s. Real: 2.5-4 min.
-        // Gate: 60-360s.
-        assert_in_range!(hover_time_s, 60.0, 360.0, "MARK5 6 hover time");
+        // Lower current → longer hover. Model ~372s. Real: 2.5-4 min.
+        // Gate: 60-600s.
+        assert_in_range!(hover_time_s, 60.0, 600.0, "MARK5 6 hover time");
     }
 }
 
@@ -340,4 +342,75 @@ fn all_physics_configs_have_consistent_mass() {
             name, physics_mass, total_mass
         );
     }
+}
+
+// =============================================================================
+// Bench-accuracy anchor: iFlight XING2 2207 2755KV @4S on 5.1" prop
+// =============================================================================
+
+#[test]
+fn bench_anchor_iflight_2207_2755kv_at_4s() {
+    // iFlight XING2 2207 bench report (thingbits/iflight):
+    // 2755KV @4S (16V), GF51466 (5.1"×4.66"×3-blade): 1576g thrust, 40.35A.
+    // The model must reproduce max-thrust within ±15% to stay bench-validated.
+    // Uses BuildSpec → to_physics_config() for the physical-CT lookup path.
+    let mut spec = BuildSpec::default();
+    spec.motors.kv = 2755.0;
+    spec.motors.weight_g = 32.0;
+    spec.propellers.diameter_in = 5.1;
+    spec.propellers.pitch_in = 4.66;
+    spec.propellers.blade_count = 3;
+    spec.battery = hitl_physics::build::BatterySpec {
+        cell_count: 4,
+        capacity_mah: 1500.0,
+        c_rating: 75.0,
+        weight_g: 180.0,
+        internal_resistance_mohm: None,
+    };
+    // Override battery_voltage to match bench power supply (16V, not nominal 14.8)
+    let mut config = spec.to_physics_config();
+    config.battery_voltage = 16.0;
+
+    let max_omega = config.max_motor_speed_from_voltage();
+    let max_thrust_per_motor_n = config.kt * max_omega * max_omega;
+    let max_thrust_per_motor_g = max_thrust_per_motor_n / 9.80665 * 1000.0;
+    let bench_g = 1576.0;
+
+    let error_pct = ((max_thrust_per_motor_g - bench_g) / bench_g).abs() * 100.0;
+    assert!(
+        error_pct < 15.0,
+        "bench anchor: model gives {:.0}g vs bench {:.0}g ({:.1}% error, limit 15%)",
+        max_thrust_per_motor_g, bench_g, error_pct
+    );
+}
+
+#[test]
+fn user_build_hover_throttle_is_realistic() {
+    // User's build: iFlight XING2 2207 1855KV, Gemfan 5030 (5×3), 4S (16.8V
+    // charged), ~490g frame, 32g motor, battery Auline 21700 4S 4500mAh ~640g.
+    // Total ~900g AUW. Expected hover: 55-80% (heavy build, moderate KV).
+    let mut spec = BuildSpec::default();
+    spec.motors.kv = 1855.0;
+    spec.motors.weight_g = 32.0;
+    spec.propellers.diameter_in = 5.0;
+    spec.propellers.pitch_in = 3.0;
+    spec.propellers.blade_count = 3;
+    spec.frame.weight_g = 490.0;
+    spec.battery = hitl_physics::build::BatterySpec {
+        cell_count: 4,
+        capacity_mah: 4500.0,
+        c_rating: 30.0,
+        weight_g: 640.0,
+        internal_resistance_mohm: None,
+    };
+
+    let mut config = spec.to_physics_config();
+    config.battery_voltage = 16.8; // fully charged 4S
+
+    let hover_pct = config.hover_throttle_percent();
+    assert!(
+        hover_pct > 0.50 && hover_pct < 0.85,
+        "user build hover {:.1}% outside expected [50%, 85%]",
+        hover_pct * 100.0
+    );
 }

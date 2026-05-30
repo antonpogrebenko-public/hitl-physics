@@ -15,13 +15,13 @@ use hitl_physics::{compute_thrust, throttle_to_omega_with_config, PhysicsConfig}
 
 #[test]
 fn omega_is_linear_in_actuator_command() {
+    // ω = cmd · max_speed (pure linear, no idle offset after idle revert).
     let config = PhysicsConfig::default();
     let max_speed = config.max_motor_speed_from_voltage();
-    let min_speed = 100.0_f64; // MIN_MOTOR_SPEED
 
     for cmd in [0.0_f64, 0.1, 0.25, 0.5, 0.75, 1.0] {
         let omega = throttle_to_omega_with_config(cmd, &config);
-        let expected = min_speed + cmd * (max_speed - min_speed);
+        let expected = cmd * max_speed;
         assert!(
             (omega - expected).abs() < 1e-6,
             "ω(cmd={cmd}) = {omega:.4}, expected {expected:.4} (linear)"
@@ -30,33 +30,28 @@ fn omega_is_linear_in_actuator_command() {
 }
 
 #[test]
-fn px4_thr_mdl_fac_1_round_trip_is_linear_in_desired_thrust() {
-    // Simulates PX4 with `THR_MDL_FAC=1`: PX4's controller picks `thr_desired`
-    // in [0, 1], outputs `cmd = sqrt(thr_desired)` to the actuator. We then
-    // run that cmd through the sim and verify the resulting thrust fraction
-    // matches `thr_desired` (i.e., the round-trip is linear).
+fn px4_thr_mdl_fac_1_round_trip_is_exact() {
+    // With no idle offset and THR_MDL_FAC=1: PX4 outputs cmd = sqrt(thr_desired),
+    // sim produces ω = cmd·max → thrust = kt·(cmd·max)² = thr_desired·max_thrust.
+    // The round-trip is exact (within floating-point epsilon).
     let config = PhysicsConfig::default();
     let max_omega = config.max_motor_speed_from_voltage();
     let max_thrust = compute_thrust(max_omega, &config);
 
-    // Skip the very low end where the MIN_MOTOR_SPEED offset dominates and
-    // the round-trip can't be perfectly linear (this is fine in practice —
-    // PX4 never operates the motors near absolute zero anyway, since
-    // MPC_THR_MIN ≥ 0.05 in any realistic config).
-    for thr_desired in [0.05_f64, 0.1, 0.25, 0.5, 0.75, 1.0] {
+    for thr_desired in [0.1_f64, 0.25, 0.5, 0.75, 1.0] {
         let cmd_from_px4 = thr_desired.sqrt();
         let omega = throttle_to_omega_with_config(cmd_from_px4, &config);
-        let actual_thrust = compute_thrust(omega, &config);
-        let actual_fraction = actual_thrust / max_thrust;
-        // 6% tolerance for the MIN_MOTOR_SPEED offset; tightens at higher thr.
-        let tol = 0.06;
+        let actual_fraction = compute_thrust(omega, &config) / max_thrust;
         assert!(
-            (actual_fraction - thr_desired).abs() < tol,
+            (actual_fraction - thr_desired).abs() < 1e-9,
             "thr_desired={thr_desired:.2} → cmd={cmd_from_px4:.4} → \
-             actual_thrust_fraction={actual_fraction:.4}, expected {thr_desired:.2} \
-             (within {tol})"
+             fraction={actual_fraction:.4}; round-trip should be exact"
         );
     }
+
+    // Exact at full throttle.
+    let full = compute_thrust(throttle_to_omega_with_config(1.0, &config), &config) / max_thrust;
+    assert!((full - 1.0).abs() < 1e-9, "full-throttle thrust must equal max_thrust");
 }
 
 #[test]
@@ -72,9 +67,7 @@ fn cmd_to_thrust_is_quadratic_not_linear() {
     let thrust_half = compute_thrust(omega_half, &config);
     let ratio = thrust_half / max_thrust;
 
-    // Linear-in-ω: ω(0.5) ≈ MAX/2, so thrust(0.5)/thrust(1.0) ≈ 0.25–0.28
-    // depending on MIN_MOTOR_SPEED / max_speed ratio. The linear-thrust
-    // alternative would give ~0.5, so we just need to rule that out.
+    // Linear-in-ω: ω(0.5) = MAX/2, so thrust(0.5)/thrust(1.0) = 0.25 exactly.
     assert!(
         ratio < 0.35,
         "thrust(cmd=0.5)/thrust(cmd=1.0) = {ratio:.4}, expected <0.35 (quadratic). \

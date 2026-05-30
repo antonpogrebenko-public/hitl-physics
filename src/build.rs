@@ -1011,15 +1011,10 @@ impl Default for BuildSpec {
 mod tests {
     use super::*;
 
-    /// The Phase 0/5 regression gate: `BuildSpec::default().to_physics_config()`
-    /// preserves geometry / electrical / thermal fields from `from_build_specs`,
-    /// and produces a kt within 10% of the legacy value for the canonical 5"
-    /// race build (the Phase 5 acceptance criterion).
-    ///
-    /// Phase 5 deliberately replaces kt/kq with the propeller coefficient
-    /// lookup so identical props with different motor KVs no longer produce
-    /// different kt. The anchor entry in `data/prop_coefficients.csv` is
-    /// calibrated so the default 5"x4.5"x3 build stays within ±10%.
+    /// Post-recalibration gate: `BuildSpec::default().to_physics_config()`
+    /// preserves geometry / electrical / thermal fields, and produces kt/kq
+    /// from the physical-CT prop lookup (deliberately ~3.5-4× lower than the
+    /// legacy inflated `from_build_specs` values).
     #[test]
     fn default_build_spec_matches_from_build_specs_except_mass() {
         let via_build = BuildSpec::default().to_physics_config();
@@ -1039,18 +1034,23 @@ mod tests {
         assert_eq!(via_build.battery_voltage, direct.battery_voltage);
         assert_eq!(via_build.motor_kt_electrical, direct.motor_kt_electrical);
 
-        // Phase 5 acceptance: kt within ±10% of legacy at the anchor KV.
-        let kt_rel = (via_build.kt - direct.kt).abs() / direct.kt;
+        // Recalibration: kt from physical-CT is intentionally ~0.25× the legacy
+        // inflated value (real CT_aero ~0.11 vs legacy ~0.42). The lookup gives
+        // the bench-matched value; from_build_specs retains the old formula.
+        let kt_ratio = via_build.kt / direct.kt;
         assert!(
-            kt_rel < 0.10,
-            "Phase 5 anchor: kt shifted by {:.1}% (got {:.4e}, legacy {:.4e})",
-            kt_rel * 100.0, via_build.kt, direct.kt,
+            kt_ratio > 0.15 && kt_ratio < 0.40,
+            "kt de-inflation ratio {:.3} outside [0.15, 0.40] (got {:.4e}, legacy {:.4e})",
+            kt_ratio, via_build.kt, direct.kt,
         );
-        let kq_rel = (via_build.kq - direct.kq).abs() / direct.kq;
+
+        // kt from the lookup should be physically reasonable: CT_aero in [0.08, 0.14]
+        let d_m: f64 = 5.0 * 0.0254;
+        let ct_aero = via_build.kt / (1.225 * d_m.powi(4)) * (2.0 * std::f64::consts::PI).powi(2);
         assert!(
-            kq_rel < 0.10,
-            "Phase 5 anchor: kq shifted by {:.1}% (got {:.4e}, legacy {:.4e})",
-            kq_rel * 100.0, via_build.kq, direct.kq,
+            ct_aero > 0.08 && ct_aero < 0.14,
+            "CT_aero {:.4} outside physical FPV range [0.08, 0.14]",
+            ct_aero,
         );
     }
 

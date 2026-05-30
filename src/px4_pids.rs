@@ -75,12 +75,27 @@ pub struct Px4Pids {
     pub yaw_ff: f32,
 }
 
+/// Reference hover command for the 5"-class build at which REF_PIDS are tuned.
+/// Corresponds to TWR ≈ 3.6 (1 / 0.28 ≈ 3.6).
+const REF_HOVER_CMD: f64 = 0.28;
+
 /// Compute rate-controller gains for the given airframe.
 ///
-/// See the module docs for the scaling rules and reference values.
-pub fn compute_pids(physics: &PhysicsConfig) -> Px4Pids {
-    // Guard against pathological inertias (NaN / zero) — fall back to a
-    // value that produces the reference PIDs so callers never see zeros.
+/// `hover_cmd` is the normalized hover throttle (0–1). High-TWR builds hover
+/// at low throttle (e.g. 0.14), meaning motors saturate at zero before the
+/// controller can fully brake a rotation. Without attenuation, the asymmetric
+/// authority creates a limit cycle where one motor pair saturates at zero
+/// every half-period.
+///
+/// The reference build hovers at ~0.28 (TWR ≈ 3.6). When `hover_cmd` is lower,
+/// P/I/D gains are scaled by the braking authority ratio: at low hover_cmd the
+/// motors saturate at zero long before the full correction is delivered. The
+/// available braking torque is `hover/(1-hover)` normalized to the reference
+/// build's `ref/(1-ref)`. This ratio is used directly (no sqrt) because the
+/// gain margin before motor saturation is linear in braking authority — sqrt
+/// was insufficient for extreme-TWR builds (>8:1) where the limit cycle
+/// persisted. Feed-forward is not attenuated.
+pub fn compute_pids(physics: &PhysicsConfig, hover_cmd: f32) -> Px4Pids {
     let safe = |i: f64, axis_ref: f64| -> f64 {
         if i.is_finite() && i > 0.0 {
             i
@@ -98,18 +113,27 @@ pub fn compute_pids(physics: &PhysicsConfig) -> Px4Pids {
 
     let i_scale = |r: f64| r.sqrt();
 
+    // Attenuate gains for high-TWR builds where braking authority is limited.
+    // Braking ratio = (hover/(1-hover)) / (ref/(1-ref)): how much braking torque
+    // this build has relative to the reference. Linear (no sqrt) because the
+    // gain margin before saturation scales linearly with braking authority.
+    let hover = (hover_cmd as f64).clamp(0.05, 1.0);
+    let ref_braking = REF_HOVER_CMD / (1.0 - REF_HOVER_CMD);
+    let build_braking = hover / (1.0 - hover);
+    let authority_scale = (build_braking / ref_braking).min(1.0);
+
     Px4Pids {
-        roll_p:   (REF_PIDS.roll_p   as f64 * r_roll) as f32,
-        roll_i:   (REF_PIDS.roll_i   as f64 * i_scale(r_roll)) as f32,
-        roll_d:   (REF_PIDS.roll_d   as f64 * r_roll) as f32,
+        roll_p:   (REF_PIDS.roll_p   as f64 * r_roll * authority_scale) as f32,
+        roll_i:   (REF_PIDS.roll_i   as f64 * i_scale(r_roll) * authority_scale) as f32,
+        roll_d:   (REF_PIDS.roll_d   as f64 * r_roll * authority_scale) as f32,
         roll_ff:  (REF_PIDS.roll_ff  as f64 * r_roll) as f32,
-        pitch_p:  (REF_PIDS.pitch_p  as f64 * r_pitch) as f32,
-        pitch_i:  (REF_PIDS.pitch_i  as f64 * i_scale(r_pitch)) as f32,
-        pitch_d:  (REF_PIDS.pitch_d  as f64 * r_pitch) as f32,
+        pitch_p:  (REF_PIDS.pitch_p  as f64 * r_pitch * authority_scale) as f32,
+        pitch_i:  (REF_PIDS.pitch_i  as f64 * i_scale(r_pitch) * authority_scale) as f32,
+        pitch_d:  (REF_PIDS.pitch_d  as f64 * r_pitch * authority_scale) as f32,
         pitch_ff: (REF_PIDS.pitch_ff as f64 * r_pitch) as f32,
-        yaw_p:    (REF_PIDS.yaw_p    as f64 * r_yaw) as f32,
-        yaw_i:    (REF_PIDS.yaw_i    as f64 * i_scale(r_yaw)) as f32,
-        yaw_d:    (REF_PIDS.yaw_d    as f64 * r_yaw) as f32,
+        yaw_p:    (REF_PIDS.yaw_p    as f64 * r_yaw * authority_scale) as f32,
+        yaw_i:    (REF_PIDS.yaw_i    as f64 * i_scale(r_yaw) * authority_scale) as f32,
+        yaw_d:    (REF_PIDS.yaw_d    as f64 * r_yaw * authority_scale) as f32,
         yaw_ff:   (REF_PIDS.yaw_ff   as f64 * r_yaw) as f32,
     }
 }
@@ -159,7 +183,7 @@ mod tests {
     #[test]
     fn reference_inertia_returns_px4_defaults_within_5_percent() {
         let physics = config_with_inertia(REF_INERTIA);
-        let pids = compute_pids(&physics);
+        let pids = compute_pids(&physics, REF_HOVER_CMD as f32);
         assert!(rel_diff(pids.roll_p as f64, 0.15) < 0.05);
         assert!(rel_diff(pids.pitch_p as f64, 0.15) < 0.05);
         assert!(rel_diff(pids.yaw_p as f64, 0.20) < 0.05);
@@ -171,7 +195,7 @@ mod tests {
     fn light_airframe_scales_gains_down() {
         // Tinyhawk-class ~0.3x reference inertia
         let physics = config_with_inertia([0.0015, 0.0015, 0.003]);
-        let pids = compute_pids(&physics);
+        let pids = compute_pids(&physics, REF_HOVER_CMD as f32);
         // P should be roughly 0.3x
         let expected_p = 0.15 * 0.3;
         assert!(
@@ -192,7 +216,7 @@ mod tests {
     fn heavy_airframe_scales_gains_up() {
         // 7" cinelifter-class ~3x reference inertia
         let physics = config_with_inertia([0.015, 0.015, 0.027]);
-        let pids = compute_pids(&physics);
+        let pids = compute_pids(&physics, REF_HOVER_CMD as f32);
         let expected_p = 0.15 * 3.0;
         assert!(
             (pids.roll_p as f64 - expected_p).abs() < 0.02,
@@ -212,7 +236,7 @@ mod tests {
     fn yaw_axis_scales_with_izz_not_ixx() {
         // High-Izz / low-Ixx airframe (e.g., elongated frame)
         let physics = config_with_inertia([0.005, 0.005, 0.018]);
-        let pids = compute_pids(&physics);
+        let pids = compute_pids(&physics, REF_HOVER_CMD as f32);
         // Yaw_p = 0.20 * (0.018 / 0.009) = 0.40
         assert!((pids.yaw_p as f64 - 0.40).abs() < 0.01);
         // Roll_p stays at reference
@@ -222,7 +246,7 @@ mod tests {
     #[test]
     fn d_term_scales_linearly_with_inertia() {
         let physics = config_with_inertia([0.0025, 0.0025, 0.0045]);
-        let pids = compute_pids(&physics);
+        let pids = compute_pids(&physics, REF_HOVER_CMD as f32);
         // Half the reference inertia → half the D term
         let expected_d = 0.003 * 0.5;
         assert!((pids.roll_d as f64 - expected_d).abs() < 1e-4);
@@ -231,9 +255,9 @@ mod tests {
 
     #[test]
     fn fingerprint_is_stable_and_changes_with_inertia() {
-        let a = compute_pids(&config_with_inertia([0.005, 0.005, 0.009]));
-        let b = compute_pids(&config_with_inertia([0.005, 0.005, 0.009]));
-        let c = compute_pids(&config_with_inertia([0.006, 0.005, 0.009]));
+        let a = compute_pids(&config_with_inertia([0.005, 0.005, 0.009]), REF_HOVER_CMD as f32);
+        let b = compute_pids(&config_with_inertia([0.005, 0.005, 0.009]), REF_HOVER_CMD as f32);
+        let c = compute_pids(&config_with_inertia([0.006, 0.005, 0.009]), REF_HOVER_CMD as f32);
         assert_eq!(fingerprint(&a), fingerprint(&b));
         assert_ne!(fingerprint(&a), fingerprint(&c));
     }
@@ -243,9 +267,64 @@ mod tests {
         // Zero / NaN inertia → fall back to reference defaults
         let mut physics = PhysicsConfig::default();
         physics.inertia = [0.0, f64::NAN, -1.0];
-        let pids = compute_pids(&physics);
+        let pids = compute_pids(&physics, REF_HOVER_CMD as f32);
         assert!(pids.roll_p.is_finite() && pids.roll_p > 0.0);
         assert!(pids.pitch_p.is_finite() && pids.pitch_p > 0.0);
         assert!(pids.yaw_p.is_finite() && pids.yaw_p > 0.0);
+    }
+
+    #[test]
+    fn high_twr_attenuates_gains() {
+        let physics = config_with_inertia(REF_INERTIA);
+        let ref_pids = compute_pids(&physics, REF_HOVER_CMD as f32);
+        // TWR=7.2 → hover_cmd=0.14
+        let high_twr_pids = compute_pids(&physics, 0.14);
+        // authority_scale = braking_ratio (no sqrt)
+        // braking_ratio = (0.14/0.86) / (0.28/0.72) = 0.1628 / 0.3889 = 0.4186
+        let ref_braking = REF_HOVER_CMD / (1.0 - REF_HOVER_CMD);
+        let build_braking = 0.14 / (1.0 - 0.14);
+        let expected_scale = build_braking / ref_braking;
+        let actual_scale = high_twr_pids.roll_p as f64 / ref_pids.roll_p as f64;
+        assert!(
+            (actual_scale - expected_scale).abs() < 0.01,
+            "expected scale {:.4}, got {:.4}", expected_scale, actual_scale
+        );
+        // D-term also attenuated
+        let d_scale = high_twr_pids.pitch_d as f64 / ref_pids.pitch_d as f64;
+        assert!((d_scale - expected_scale).abs() < 0.01);
+        // FF not attenuated
+        assert_eq!(high_twr_pids.roll_ff, ref_pids.roll_ff);
+    }
+
+    #[test]
+    fn low_twr_does_not_boost_gains() {
+        let physics = config_with_inertia(REF_INERTIA);
+        let ref_pids = compute_pids(&physics, REF_HOVER_CMD as f32);
+        // TWR=2 → hover_cmd=0.50 (above reference)
+        let low_twr_pids = compute_pids(&physics, 0.50);
+        // braking_ratio = (0.50/0.50) / (0.28/0.72) > 1.0 → clamped to 1.0
+        assert_eq!(low_twr_pids.roll_p, ref_pids.roll_p);
+        assert_eq!(low_twr_pids.pitch_d, ref_pids.pitch_d);
+    }
+
+    #[test]
+    fn extreme_twr_attenuates_aggressively() {
+        let physics = config_with_inertia(REF_INERTIA);
+        let ref_pids = compute_pids(&physics, REF_HOVER_CMD as f32);
+        // TWR~10 → hover_cmd=0.12 (extreme racing build)
+        let extreme_pids = compute_pids(&physics, 0.12);
+        let ref_braking = REF_HOVER_CMD / (1.0 - REF_HOVER_CMD);
+        let build_braking = 0.12 / (1.0 - 0.12);
+        let expected_scale = build_braking / ref_braking;
+        let actual_scale = extreme_pids.roll_p as f64 / ref_pids.roll_p as f64;
+        // Expected: (0.12/0.88)/(0.28/0.72) ≈ 0.351
+        assert!(
+            expected_scale < 0.36,
+            "extreme TWR should cut gains aggressively: {:.4}", expected_scale
+        );
+        assert!(
+            (actual_scale - expected_scale).abs() < 0.01,
+            "expected {:.4}, got {:.4}", expected_scale, actual_scale
+        );
     }
 }

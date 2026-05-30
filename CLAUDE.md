@@ -130,12 +130,8 @@ let tau_yaw = q1 + q2 - q3 - q4;
 ```
 CCW motors (1=FR, 2=BL) produce positive yaw torque. CW motors (3=FL, 4=BR) produce negative.
 
-### Inertia tuning for PX4
-`from_build_specs` enforces inertia floors for PX4's default rate PIDs:
-- Ixx/Iyy >= 0.012 kg·m² (prevents roll/pitch oscillation on lightweight builds)
-- Izz >= max(Ixx*1.7, 0.020) (prevents yaw hunting, keeps Izz/Ixx ratio physical)
-
-Without the Ixx floor, builds under ~500g compute inertias so low that PX4's rate controller overshoots, causing visible motor RPM oscillation and frame trembling.
+### PID authority scaling: braking ratio, not sqrt
+`compute_pids()` scales rate gains by `(hover/(1-hover)) / (ref/(1-ref))` — the braking authority ratio. This is the physically correct scaling because the gain margin before motor saturation is linear in available braking torque. Previous attempts using `sqrt(hover/ref)` or `sqrt(braking_ratio)` were insufficient for extreme-TWR builds (>8:1) — the limit cycle persisted at 12-13Hz. The inertia floors (Ixx >= 0.012) were removed; per-build PIDs handle all TWR ranges now.
 
 ### Drag coefficients must be physically derived
 Hardcoded drag values (e.g., 0.25) give unrealistic max speeds (~4 m/s). Always compute from `0.5 × ρ × Cd × A_frontal`. A 5" quad should achieve 15-20 m/s in position mode.

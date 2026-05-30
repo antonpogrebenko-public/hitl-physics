@@ -272,12 +272,31 @@ impl PhysicsConfig {
         ((self.mass_kg * self.gravity) / (4.0 * self.kt)).sqrt()
     }
 
-    /// Calculate maximum motor speed based on battery voltage (no-load).
+    /// Calculate maximum (full-throttle, loaded) motor speed in rad/s.
     ///
-    /// max_rpm = KV × voltage, converted to rad/s
+    /// Solves the steady-state torque balance between the motor and prop:
+    ///   motor torque:  Kt·(V − Kt·ω) / R
+    ///   prop torque:   kq·ω²
+    ///
+    /// Setting equal gives quadratic `kq·ω² + (Kt²/R)·ω − Kt·V/R = 0`.
+    /// The positive root is the loaded full-throttle RPM — no constant fraction
+    /// needed. This correctly predicts ~0.88× no-load for mid-KV 5" builds AND
+    /// the heavier ~0.5× bog on tiny high-KV motors (e.g. 0802 12000KV).
     pub fn max_motor_speed_from_voltage(&self) -> f64 {
-        let max_rpm = self.motor_kv * self.battery_voltage;
-        max_rpm * std::f64::consts::PI / 30.0 // RPM to rad/s
+        let kt_e = self.motor_kt_electrical;
+        let r = self.motor_resistance_ohm;
+        let v = self.battery_voltage;
+
+        if self.kq < 1e-12 {
+            return self.motor_kv * v * std::f64::consts::PI / 30.0;
+        }
+
+        // kq·ω² + (Kt²/R)·ω − Kt·V/R = 0
+        let a = self.kq;
+        let b = kt_e * kt_e / r;
+        let c = kt_e * v / r;
+        let disc = b * b + 4.0 * a * c;
+        (-b + disc.sqrt()) / (2.0 * a)
     }
 
     /// Hover throttle as a percentage of max motor speed (0.0–1.0).
@@ -434,8 +453,12 @@ mod tests {
     fn test_voltage_limited_max_speed() {
         let config = PhysicsConfig::default(); // 1200KV, 14.8V
         let max_speed = config.max_motor_speed_from_voltage();
-        // 1200 KV * 14.8V = 17760 RPM = 1860 rad/s
-        assert!((max_speed - 1860.0).abs() < 10.0);
+        let no_load_rads = 1200.0 * 14.8 * std::f64::consts::PI / 30.0; // ~1860 rad/s
+        // Torque-balance model: loaded RPM should be 80-95% of no-load for a
+        // mid-KV motor with a reasonable prop load.
+        let ratio = max_speed / no_load_rads;
+        assert!(ratio > 0.80 && ratio < 0.95,
+            "loaded/no-load ratio {:.3} outside expected [0.80, 0.95]", ratio);
     }
 
     #[test]

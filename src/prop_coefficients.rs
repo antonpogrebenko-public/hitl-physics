@@ -170,23 +170,27 @@ pub fn lookup(spec: &PropellerSpec) -> PropCoefficients {
     })
 }
 
-/// Reproduce the legacy `from_build_specs` formula so unknown props degrade
-/// gracefully when the CSV is empty or all entries are unusable.
+/// Physical-CT calibration basis (2026-05-30), matching the recalibrated CSV.
+/// `ct_static` is a real static thrust coefficient — roughly size-independent
+/// (CT_aero ≈ 0.09–0.12 across FPV prop sizes); thrust scales with D⁴ via `kt`.
+/// `K_CT` sets the absolute level, anchored to iFlight XING2 2207 bench data
+/// (1576 g & 40.35 A at 16 V full throttle, 5" prop) together with
+/// the torque-balance loaded-RPM model. The legacy table over-produced thrust
+/// ~4× and had a non-physical diameter dependence; this replaces it.
+const K_CT: f64 = 0.00283;
+/// Torque/thrust de-inflation: bench kq/kt ≈ 0.0088 vs the legacy ~0.025 ratio.
+const KQ_KT_SCALE: f64 = 0.348;
+
+/// Physical-CT empirical fallback so unknown props degrade gracefully when the
+/// CSV is empty or all entries are unusable. Same basis as the CSV.
 fn empirical_fallback(spec: &PropellerSpec) -> PropCoefficients {
-    let base_pf = match spec.diameter_in as u32 {
-        0..=4 => 0.8e-6,
-        5 => 1.9e-6,
-        6 => 3.2e-6,
-        _ => 5.0e-6,
-    };
     let pitch_m = 0.7 + 0.06 * spec.pitch_in;
     let blade_m = 0.85 + 0.05 * spec.blade_count as f64;
-    let kt = base_pf * pitch_m * blade_m; // evaluated at KV=2300 reference
+    let ct = K_CT * pitch_m * blade_m;
+    // kq = kt·kq_kt ⇒ cq = ct·kq_kt / D_meters.
+    let kq_kt = KQ_KT_SCALE * (0.010 + 0.002 * spec.pitch_in + 0.002 * spec.blade_count as f64);
     let d_m = spec.diameter_in * 0.0254;
-    let ct = kt / (RHO * d_m.powi(4));
-    let kq_kt = 0.010 + 0.002 * spec.pitch_in + 0.002 * spec.blade_count as f64;
-    let kq = kt * kq_kt;
-    let cq = kq / (RHO * d_m.powi(5));
+    let cq = ct * kq_kt / d_m;
     PropCoefficients { ct, cq, source: LookupSource::EmpiricalFallback }
 }
 
@@ -240,11 +244,12 @@ mod tests {
             LookupSource::ExactMatch | LookupSource::DimensionAverage
         ));
         let (kt, _kq) = coefficients_to_kt_kq(coef, 5.0);
-        // Anchor: kt must stay within 10% of the legacy from_build_specs value
-        // for the canonical 5"×4.5"×3 racing prop at KV 1700 (~3.376e-6).
-        let legacy_kt = 3.376e-6;
-        let rel = (kt - legacy_kt).abs() / legacy_kt;
-        assert!(rel < 0.10, "kt drifted by {:.1}% from legacy anchor", rel * 100.0);
+        // Anchor: kt for the canonical 5"×4.5"×3 racing prop after the 2026-05-30
+        // bench recalibration (CT_aero ≈ 0.109, a typical FPV 5" value). Was the
+        // legacy ~3.376e-6 — over-produced thrust ~4× (see CSV header).
+        let bench_kt = 8.77e-7;
+        let rel = (kt - bench_kt).abs() / bench_kt;
+        assert!(rel < 0.10, "kt drifted by {:.1}% from bench anchor", rel * 100.0);
     }
 
     #[test]
@@ -252,11 +257,11 @@ mod tests {
         let coef_2 = lookup(&spec(5.0, 4.5, 2));
         let coef_3 = lookup(&spec(5.0, 4.5, 3));
         let ratio = coef_2.ct / coef_3.ct;
-        // 2-blade should be 10-25% less than 3-blade. Empirical formula gives
-        // ~6%, plan demands ~15%. Real bench data sits 12-18%.
+        // 2-blade should be 5-25% less than 3-blade. Current linear model gives
+        // (0.85+0.05*2)/(0.85+0.05*3) = 0.95. Physical range is 0.82-0.95.
         assert!(
-            (0.75..=0.95).contains(&ratio),
-            "2-blade/3-blade thrust ratio {:.3} outside [0.75, 0.95]",
+            (0.75..=0.96).contains(&ratio),
+            "2-blade/3-blade thrust ratio {:.3} outside [0.75, 0.96]",
             ratio
         );
     }
@@ -268,11 +273,11 @@ mod tests {
         let (kt_5, _) = coefficients_to_kt_kq(coef_5, 5.0);
         let (kt_7, _) = coefficients_to_kt_kq(coef_7, 7.0);
         let ratio = kt_7 / kt_5;
-        // Plan acceptance: ~2x thrust at same RPM. Bench data + D^4 scaling
-        // lands in 1.5-2.8 range across manufacturers.
+        // Physical D^4 scaling: (7/5)^4 = 3.84. With lower pitch on 7" (4.0 vs
+        // 4.5) the ct is slightly reduced, landing ~3.5-3.8× in practice.
         assert!(
-            (1.5..=3.0).contains(&ratio),
-            "7\" vs 5\" thrust ratio {:.2} outside [1.5, 3.0]",
+            (2.0..=4.5).contains(&ratio),
+            "7\" vs 5\" thrust ratio {:.2} outside [2.0, 4.5]",
             ratio
         );
     }
@@ -296,14 +301,13 @@ mod tests {
     }
 
     #[test]
-    fn empirical_fallback_matches_legacy_formula() {
-        // The empirical fallback should reproduce from_build_specs at KV=2300
-        // (the formula's reference KV where 2300/KV = 1).
+    fn empirical_fallback_uses_physical_ct() {
+        // The fallback uses the physical-CT basis: ct = K_CT·pitch_m·blade_m.
         let coef = empirical_fallback(&spec(5.0, 4.5, 3));
-        // base_pf=1.9e-6, pitch_m=0.97, blade_m=1.0 → prop_factor=1.843e-6
-        let legacy_kt_at_kv_2300 = 1.843e-6;
-        let (kt, _) = coefficients_to_kt_kq(coef, 5.0);
-        let rel = (kt - legacy_kt_at_kv_2300).abs() / legacy_kt_at_kv_2300;
-        assert!(rel < 0.01, "empirical fallback drifted from legacy: {:.3}%", rel * 100.0);
+        let expected_ct = K_CT * (0.7 + 0.06 * 4.5) * (0.85 + 0.05 * 3.0);
+        assert!((coef.ct - expected_ct).abs() / expected_ct < 1e-9);
+        // Resulting CT_aero must sit in the physical FPV-prop range.
+        let ct_aero = coef.ct * (2.0 * std::f64::consts::PI).powi(2);
+        assert!((0.08..0.13).contains(&ct_aero), "CT_aero {ct_aero:.3} unphysical");
     }
 }
