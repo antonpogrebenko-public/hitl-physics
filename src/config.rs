@@ -195,7 +195,12 @@ impl PhysicsConfig {
 
         let prop_factor = base_prop_factor * pitch_multiplier * blade_multiplier;
 
-        let kt = prop_factor * (2300.0 / kv).powi(2);
+        // kt is a prop coefficient (thrust = kt·ω²); the (2300/kv)² term is an
+        // empirical stand-in fit for ~1500-2600 KV race motors. Clamp KV to the
+        // calibrated floor so large low-KV builds (8"+) don't inflate kt
+        // quadratically. Mirrors KT_KV_FLOOR in the TS physics-model.
+        let effective_kv = kv.max(1500.0);
+        let kt = prop_factor * (2300.0 / effective_kv).powi(2);
         // kq/kt ratio depends on prop efficiency:
         // Low-pitch 2-blade (~0.012) to high-pitch 5-blade (~0.035)
         // Base ratio 0.015 for a 2-blade 3-pitch, scales with pitch and blade count
@@ -447,6 +452,32 @@ mod tests {
         assert!(high_pitch_4blade.kt > high_pitch_3blade.kt);
         // Mass should be the same for all
         assert!((low_pitch_2blade.mass_kg - high_pitch_4blade.mass_kg).abs() < 1e-10);
+    }
+
+    #[test]
+    fn low_kv_kt_clamped_to_floor() {
+        // A 500 KV 8" build: without the clamp kt = prop_factor·(2300/500)² ≈ 21×.
+        // Clamped to KV 1500, the big low-KV build's kt must match the floor build
+        // and stay far below the unclamped value.
+        let low_kv = PhysicsConfig::from_build_specs(500.0, 8.0, 4.5, 2, 600.0, 60.0, 22.2);
+        let at_floor = PhysicsConfig::from_build_specs(1500.0, 8.0, 4.5, 2, 600.0, 60.0, 22.2);
+        assert!((low_kv.kt - at_floor.kt).abs() < 1e-12, "low-KV kt must clamp to the floor");
+
+        // Loaded full-throttle thrust should be physical (not the ~20:1 blowup):
+        // total thrust < 10× weight.
+        let omega = low_kv.max_motor_speed_from_voltage();
+        let total_thrust_n = 4.0 * low_kv.kt * omega * omega;
+        let weight_n = low_kv.mass_kg * low_kv.gravity;
+        assert!(total_thrust_n / weight_n < 10.0, "TWR {} unphysical", total_thrust_n / weight_n);
+    }
+
+    #[test]
+    fn high_kv_kt_unaffected_by_clamp() {
+        // 1700 KV is above the floor — kt keeps the full (2300/1700)² term.
+        let c = PhysicsConfig::from_build_specs(1700.0, 5.0, 4.5, 3, 350.0, 33.0, 14.8);
+        let base = 1.9e-6 * (0.7 + 0.06 * 4.5) * (0.85 + 0.05 * 3.0);
+        let expected = base * (2300.0_f64 / 1700.0).powi(2);
+        assert!((c.kt - expected).abs() < 1e-12);
     }
 
     #[test]

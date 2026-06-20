@@ -150,3 +150,10 @@ The signature is `compute_electrical_power(terminal_voltage: f64, ...)` — it n
 
 ### `fingerprint()` in `px4_pids.rs` uses deterministic FNV-1a
 The PID config fingerprint replaced `DefaultHasher` with FNV-1a over f32 bit patterns. The hash is now stable across process restarts and platforms. If you serialize fingerprints (e.g., to localStorage or logs), old values computed with `DefaultHasher` are invalidated and will trigger a config resend on the next daemon start.
+
+## Approach
+- Read existing files before writing. Don't re-read unless changed.
+- Thorough in reasoning, concise in output.
+- No sycophantic openers or closing fluff.
+- No emojis or em-dashes.
+- Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
