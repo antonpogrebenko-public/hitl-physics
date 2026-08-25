@@ -52,9 +52,18 @@ pub const REF_INERTIA: [f64; 3] = [0.005, 0.005, 0.009];
 
 /// PX4 v1.14 default rate-controller gains at [`REF_INERTIA`].
 pub const REF_PIDS: Px4Pids = Px4Pids {
-    roll_p: 0.15,  roll_i: 0.20,  roll_d: 0.003,  roll_ff: 0.0,
-    pitch_p: 0.15, pitch_i: 0.20, pitch_d: 0.003, pitch_ff: 0.0,
-    yaw_p: 0.20,   yaw_i: 0.10,   yaw_d: 0.0,     yaw_ff: 0.0,
+    roll_p: 0.15,
+    roll_i: 0.20,
+    roll_d: 0.003,
+    roll_ff: 0.0,
+    pitch_p: 0.15,
+    pitch_i: 0.20,
+    pitch_d: 0.003,
+    pitch_ff: 0.0,
+    yaw_p: 0.20,
+    yaw_i: 0.10,
+    yaw_d: 0.0,
+    yaw_ff: 0.0,
 };
 
 /// Rate-controller gains corresponding to PX4's `MC_{ROLL,PITCH,YAW}RATE_*`
@@ -156,18 +165,18 @@ pub fn compute_pids(physics: &PhysicsConfig, hover_cmd: f32) -> Px4Pids {
     let pd_scale = authority_scale * bandwidth_scale;
 
     Px4Pids {
-        roll_p:   (REF_PIDS.roll_p   as f64 * r_roll * pd_scale) as f32,
-        roll_i:   (REF_PIDS.roll_i   as f64 * i_scale(r_roll) * authority_scale) as f32,
-        roll_d:   (REF_PIDS.roll_d   as f64 * r_roll * pd_scale) as f32,
-        roll_ff:  (REF_PIDS.roll_ff  as f64 * r_roll) as f32,
-        pitch_p:  (REF_PIDS.pitch_p  as f64 * r_pitch * pd_scale) as f32,
-        pitch_i:  (REF_PIDS.pitch_i  as f64 * i_scale(r_pitch) * authority_scale) as f32,
-        pitch_d:  (REF_PIDS.pitch_d  as f64 * r_pitch * pd_scale) as f32,
+        roll_p: (REF_PIDS.roll_p as f64 * r_roll * pd_scale) as f32,
+        roll_i: (REF_PIDS.roll_i as f64 * i_scale(r_roll) * authority_scale) as f32,
+        roll_d: (REF_PIDS.roll_d as f64 * r_roll * pd_scale) as f32,
+        roll_ff: (REF_PIDS.roll_ff as f64 * r_roll) as f32,
+        pitch_p: (REF_PIDS.pitch_p as f64 * r_pitch * pd_scale) as f32,
+        pitch_i: (REF_PIDS.pitch_i as f64 * i_scale(r_pitch) * authority_scale) as f32,
+        pitch_d: (REF_PIDS.pitch_d as f64 * r_pitch * pd_scale) as f32,
         pitch_ff: (REF_PIDS.pitch_ff as f64 * r_pitch) as f32,
-        yaw_p:    (REF_PIDS.yaw_p    as f64 * r_yaw * pd_scale) as f32,
-        yaw_i:    (REF_PIDS.yaw_i    as f64 * i_scale(r_yaw) * authority_scale) as f32,
-        yaw_d:    (REF_PIDS.yaw_d    as f64 * r_yaw * pd_scale) as f32,
-        yaw_ff:   (REF_PIDS.yaw_ff   as f64 * r_yaw) as f32,
+        yaw_p: (REF_PIDS.yaw_p as f64 * r_yaw * pd_scale) as f32,
+        yaw_i: (REF_PIDS.yaw_i as f64 * i_scale(r_yaw) * authority_scale) as f32,
+        yaw_d: (REF_PIDS.yaw_d as f64 * r_yaw * pd_scale) as f32,
+        yaw_ff: (REF_PIDS.yaw_ff as f64 * r_yaw) as f32,
     }
 }
 
@@ -183,9 +192,18 @@ pub fn fingerprint(pids: &Px4Pids) -> u64 {
 
     let mut hash = FNV_OFFSET;
     for &val in &[
-        pids.roll_p, pids.roll_i, pids.roll_d, pids.roll_ff,
-        pids.pitch_p, pids.pitch_i, pids.pitch_d, pids.pitch_ff,
-        pids.yaw_p, pids.yaw_i, pids.yaw_d, pids.yaw_ff,
+        pids.roll_p,
+        pids.roll_i,
+        pids.roll_d,
+        pids.roll_ff,
+        pids.pitch_p,
+        pids.pitch_i,
+        pids.pitch_d,
+        pids.pitch_ff,
+        pids.yaw_p,
+        pids.yaw_i,
+        pids.yaw_d,
+        pids.yaw_ff,
     ] {
         for byte in val.to_bits().to_le_bytes() {
             hash ^= byte as u64;
@@ -234,14 +252,16 @@ mod tests {
         assert!(
             (pids.roll_p as f64 - expected_p).abs() < 0.02,
             "roll_p {:.4} not near {:.4}",
-            pids.roll_p, expected_p
+            pids.roll_p,
+            expected_p
         );
         // I scales with sqrt(0.3) ≈ 0.547
         let expected_i = 0.20 * (0.3_f64).sqrt();
         assert!(
             (pids.roll_i as f64 - expected_i).abs() < 0.02,
             "roll_i {:.4} not near {:.4}",
-            pids.roll_i, expected_i
+            pids.roll_i,
+            expected_i
         );
     }
 
@@ -254,14 +274,16 @@ mod tests {
         assert!(
             (pids.roll_p as f64 - expected_p).abs() < 0.02,
             "roll_p {:.4} not near {:.4}",
-            pids.roll_p, expected_p
+            pids.roll_p,
+            expected_p
         );
         // I scales sub-linearly
         let expected_i = 0.20 * (3.0_f64).sqrt();
         assert!(
             (pids.roll_i as f64 - expected_i).abs() < 0.02,
             "roll_i {:.4} not near {:.4}",
-            pids.roll_i, expected_i
+            pids.roll_i,
+            expected_i
         );
     }
 
@@ -288,9 +310,18 @@ mod tests {
 
     #[test]
     fn fingerprint_is_stable_and_changes_with_inertia() {
-        let a = compute_pids(&config_with_inertia([0.005, 0.005, 0.009]), REF_HOVER_CMD as f32);
-        let b = compute_pids(&config_with_inertia([0.005, 0.005, 0.009]), REF_HOVER_CMD as f32);
-        let c = compute_pids(&config_with_inertia([0.006, 0.005, 0.009]), REF_HOVER_CMD as f32);
+        let a = compute_pids(
+            &config_with_inertia([0.005, 0.005, 0.009]),
+            REF_HOVER_CMD as f32,
+        );
+        let b = compute_pids(
+            &config_with_inertia([0.005, 0.005, 0.009]),
+            REF_HOVER_CMD as f32,
+        );
+        let c = compute_pids(
+            &config_with_inertia([0.006, 0.005, 0.009]),
+            REF_HOVER_CMD as f32,
+        );
         assert_eq!(fingerprint(&a), fingerprint(&b));
         assert_ne!(fingerprint(&a), fingerprint(&c));
     }
@@ -320,7 +351,9 @@ mod tests {
         let actual_scale = high_twr_pids.roll_p as f64 / ref_pids.roll_p as f64;
         assert!(
             (actual_scale - expected_scale).abs() < 0.01,
-            "expected scale {:.4}, got {:.4}", expected_scale, actual_scale
+            "expected scale {:.4}, got {:.4}",
+            expected_scale,
+            actual_scale
         );
         // D-term also attenuated
         let d_scale = high_twr_pids.pitch_d as f64 / ref_pids.pitch_d as f64;
@@ -341,7 +374,9 @@ mod tests {
         let actual_scale = low_twr_pids.roll_p as f64 / ref_pids.roll_p as f64;
         assert!(
             (actual_scale - expected_scale).abs() < 0.01,
-            "expected up-headroom scale {:.4}, got {:.4}", expected_scale, actual_scale
+            "expected up-headroom scale {:.4}, got {:.4}",
+            expected_scale,
+            actual_scale
         );
         // Gains are never boosted above the reference.
         assert!(low_twr_pids.roll_p <= ref_pids.roll_p);
@@ -392,11 +427,14 @@ mod tests {
         // Expected: (0.12/0.88)/(0.28/0.72) ≈ 0.351
         assert!(
             expected_scale < 0.36,
-            "extreme TWR should cut gains aggressively: {:.4}", expected_scale
+            "extreme TWR should cut gains aggressively: {:.4}",
+            expected_scale
         );
         assert!(
             (actual_scale - expected_scale).abs() < 0.01,
-            "expected {:.4}, got {:.4}", expected_scale, actual_scale
+            "expected {:.4}, got {:.4}",
+            expected_scale,
+            actual_scale
         );
     }
 }

@@ -1,7 +1,10 @@
 //! Quadrotor state vector and rigid body dynamics.
 
 use crate::config::PhysicsConfig;
-use crate::motor::{apply_thermal_derating, compute_reaction_torque, compute_thrust, motor_temp_derivative};
+use crate::motor::{
+    apply_thermal_derating, compute_reaction_torque, compute_thrust, motor_derivative,
+    motor_temp_derivative,
+};
 use nalgebra::{UnitQuaternion, Vector3};
 
 /// Complete state of a quadrotor in NED frame.
@@ -216,12 +219,11 @@ impl QuadrotorState {
 
         // Motor dynamics — apply thermal derating before computing derivative so
         // an overheating motor cannot respond to full-throttle commands.
-        let motor_derivs = [
-            (apply_thermal_derating(motor_commands[0], self.motor_temps[0], config) - self.motor_speeds[0]) / config.tau_motor,
-            (apply_thermal_derating(motor_commands[1], self.motor_temps[1], config) - self.motor_speeds[1]) / config.tau_motor,
-            (apply_thermal_derating(motor_commands[2], self.motor_temps[2], config) - self.motor_speeds[2]) / config.tau_motor,
-            (apply_thermal_derating(motor_commands[3], self.motor_temps[3], config) - self.motor_speeds[3]) / config.tau_motor,
-        ];
+        let motor_derivs = std::array::from_fn(|i| {
+            let derated_cmd =
+                apply_thermal_derating(motor_commands[i], self.motor_temps[i], config);
+            motor_derivative(self.motor_speeds[i], derated_cmd, config)
+        });
 
         // Thermal dynamics
         let motor_temp_derivs = [
@@ -253,12 +255,16 @@ impl QuadrotorState {
 
     /// Check if any motor is overheating (above max safe temp).
     pub fn is_overheating(&self, config: &PhysicsConfig) -> bool {
-        self.motor_temps.iter().any(|&t| t > config.max_motor_temp_c)
+        self.motor_temps
+            .iter()
+            .any(|&t| t > config.max_motor_temp_c)
     }
 
     /// Check if any motor has shut down due to thermal protection.
     pub fn thermal_shutdown(&self, config: &PhysicsConfig) -> bool {
-        self.motor_temps.iter().any(|&t| t >= config.motor_shutdown_temp_c)
+        self.motor_temps
+            .iter()
+            .any(|&t| t >= config.motor_shutdown_temp_c)
     }
 }
 
@@ -325,19 +331,37 @@ mod tests {
         // +roll: increase left motors (2=BL=idx1, 3=FL=idx2), decrease right (1=FR=idx0, 4=BR=idx3)
         state.motor_speeds = [hover - delta, hover + delta, hover + delta, hover - delta];
         let torques = state.compute_torques(&config);
-        assert!(torques.x > 0.0, "Positive roll torque expected when left motors faster, got {}", torques.x);
-        assert!(torques.y.abs() < torques.x.abs() * 0.01, "Roll perturbation should not produce significant pitch");
+        assert!(
+            torques.x > 0.0,
+            "Positive roll torque expected when left motors faster, got {}",
+            torques.x
+        );
+        assert!(
+            torques.y.abs() < torques.x.abs() * 0.01,
+            "Roll perturbation should not produce significant pitch"
+        );
 
         // +pitch (nose up): increase front motors (1=FR=idx0, 3=FL=idx2), decrease rear (2=BL=idx1, 4=BR=idx3)
         state.motor_speeds = [hover + delta, hover - delta, hover + delta, hover - delta];
         let torques = state.compute_torques(&config);
-        assert!(torques.y > 0.0, "Positive pitch torque expected when front motors faster, got {}", torques.y);
-        assert!(torques.x.abs() < torques.y.abs() * 0.01, "Pitch perturbation should not produce significant roll");
+        assert!(
+            torques.y > 0.0,
+            "Positive pitch torque expected when front motors faster, got {}",
+            torques.y
+        );
+        assert!(
+            torques.x.abs() < torques.y.abs() * 0.01,
+            "Pitch perturbation should not produce significant roll"
+        );
 
         // +yaw: increase CCW motors (1=FR=idx0, 2=BL=idx1), decrease CW (3=FL=idx2, 4=BR=idx3)
         state.motor_speeds = [hover + delta, hover + delta, hover - delta, hover - delta];
         let torques = state.compute_torques(&config);
-        assert!(torques.z > 0.0, "Positive yaw torque expected when CCW motors faster, got {}", torques.z);
+        assert!(
+            torques.z > 0.0,
+            "Positive yaw torque expected when CCW motors faster, got {}",
+            torques.z
+        );
     }
 
     #[test]

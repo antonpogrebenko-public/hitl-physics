@@ -191,7 +191,11 @@ fn empirical_fallback(spec: &PropellerSpec) -> PropCoefficients {
     let kq_kt = KQ_KT_SCALE * (0.010 + 0.002 * spec.pitch_in + 0.002 * spec.blade_count as f64);
     let d_m = spec.diameter_in * 0.0254;
     let cq = ct * kq_kt / d_m;
-    PropCoefficients { ct, cq, source: LookupSource::EmpiricalFallback }
+    PropCoefficients {
+        ct,
+        cq,
+        source: LookupSource::EmpiricalFallback,
+    }
 }
 
 fn pitch_ratio(requested: f64, reference: f64) -> f64 {
@@ -233,7 +237,11 @@ mod tests {
     fn table_loads_with_expected_size() {
         // CSV ships with ~50 calibrated entries; assert at least 40 to allow
         // light editing without breaking the test.
-        assert!(table_size() >= 40, "expected >=40 entries, got {}", table_size());
+        assert!(
+            table_size() >= 40,
+            "expected >=40 entries, got {}",
+            table_size()
+        );
     }
 
     #[test]
@@ -249,7 +257,11 @@ mod tests {
         // legacy ~3.376e-6 — over-produced thrust ~4× (see CSV header).
         let bench_kt = 8.77e-7;
         let rel = (kt - bench_kt).abs() / bench_kt;
-        assert!(rel < 0.10, "kt drifted by {:.1}% from bench anchor", rel * 100.0);
+        assert!(
+            rel < 0.10,
+            "kt drifted by {:.1}% from bench anchor",
+            rel * 100.0
+        );
     }
 
     #[test]
@@ -308,6 +320,9 @@ mod tests {
         assert!((coef.ct - expected_ct).abs() / expected_ct < 1e-9);
         // Resulting CT_aero must sit in the physical FPV-prop range.
         let ct_aero = coef.ct * (2.0 * std::f64::consts::PI).powi(2);
-        assert!((0.08..0.13).contains(&ct_aero), "CT_aero {ct_aero:.3} unphysical");
+        assert!(
+            (0.08..0.13).contains(&ct_aero),
+            "CT_aero {ct_aero:.3} unphysical"
+        );
     }
 }

@@ -131,33 +131,6 @@ pub fn compute_motor_current(motor_speed: f64, config: &PhysicsConfig) -> f64 {
     (load_current + config.motor_no_load_amps).max(0.0)
 }
 
-/// Compute electrical power consumed by motor.
-///
-/// P_electrical = V_terminal × I
-///
-/// Uses the actual terminal voltage (open-circuit voltage minus resistive sag)
-/// so that energy accounting is correct under load. Callers that don't have
-/// access to a live `BatteryState` may pass `config.battery_voltage` as an
-/// approximation (static nominal — no sag modelled).
-///
-/// # Arguments
-/// * `motor_speed` - Motor speed in rad/s
-/// * `terminal_voltage` - Actual terminal voltage seen by the motor (Volts).
-///   Pass `config.battery_voltage` when a live battery state is unavailable
-///   (documented approximation — ignores resistive sag).
-/// * `config` - Physics configuration
-///
-/// # Returns
-/// Electrical power in Watts
-pub fn compute_electrical_power(
-    motor_speed: f64,
-    terminal_voltage: f64,
-    config: &PhysicsConfig,
-) -> f64 {
-    let current = compute_motor_current(motor_speed, config);
-    terminal_voltage * current
-}
-
 /// Compute heat generated in motor windings (I²R losses).
 ///
 /// P_heat = I² × R
@@ -188,11 +161,7 @@ pub fn compute_motor_heat(motor_speed: f64, config: &PhysicsConfig) -> f64 {
 ///
 /// # Returns
 /// Temperature rate of change in °C/s
-pub fn motor_temp_derivative(
-    motor_temp_c: f64,
-    motor_speed: f64,
-    config: &PhysicsConfig,
-) -> f64 {
+pub fn motor_temp_derivative(motor_temp_c: f64, motor_speed: f64, config: &PhysicsConfig) -> f64 {
     let heat_in = compute_motor_heat(motor_speed, config);
     let temp_diff = motor_temp_c - config.ambient_temp_c;
     let heat_out = config.thermal_dissipation_w_per_k * temp_diff;
@@ -282,7 +251,11 @@ mod tests {
         let config = PhysicsConfig::default();
         // At 0 rad/s, torque is zero so current = no-load only (0.5A)
         let current = compute_motor_current(0.0, &config);
-        assert!((current - 0.5).abs() < 0.01, "Zero-speed current should be no-load, got {}", current);
+        assert!(
+            (current - 0.5).abs() < 0.01,
+            "Zero-speed current should be no-load, got {}",
+            current
+        );
     }
 
     #[test]
@@ -291,7 +264,10 @@ mod tests {
         let current_low = compute_motor_current(500.0, &config);
         let current_high = compute_motor_current(1500.0, &config);
         // Higher speed = more torque load = more current
-        assert!(current_high > current_low, "Current should increase with speed");
+        assert!(
+            current_high > current_low,
+            "Current should increase with speed"
+        );
     }
 
     #[test]
@@ -300,7 +276,11 @@ mod tests {
         let hover_omega = config.hover_motor_speed();
         let current = compute_motor_current(hover_omega, &config);
         // Hover current for a 2kg quad on 4S should be ~5-15A per motor
-        assert!(current > 3.0 && current < 20.0, "Hover current unrealistic: {} A", current);
+        assert!(
+            current > 3.0 && current < 20.0,
+            "Hover current unrealistic: {} A",
+            current
+        );
     }
 
     #[test]
@@ -309,7 +289,10 @@ mod tests {
         let heat_low = compute_motor_heat(500.0, &config);
         let heat_high = compute_motor_heat(1500.0, &config);
         // Higher speed = more current = more I²R heat
-        assert!(heat_high > heat_low, "Higher speed should generate more heat");
+        assert!(
+            heat_high > heat_low,
+            "Higher speed should generate more heat"
+        );
     }
 
     #[test]

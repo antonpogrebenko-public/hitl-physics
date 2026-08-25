@@ -113,15 +113,24 @@ fn report(t: &Trace) {
     );
     println!(
         "  ω_x (roll)    : min={:+8.4} max={:+8.4} |max|={:8.4} final={:+8.4} rad/s",
-        min(&gx), max(&gx), abs_max(&gx), final_val(&gx),
+        min(&gx),
+        max(&gx),
+        abs_max(&gx),
+        final_val(&gx),
     );
     println!(
         "  ω_y (pitch)   : min={:+8.4} max={:+8.4} |max|={:8.4} final={:+8.4} rad/s",
-        min(&gy), max(&gy), abs_max(&gy), final_val(&gy),
+        min(&gy),
+        max(&gy),
+        abs_max(&gy),
+        final_val(&gy),
     );
     println!(
         "  ω_z (yaw)     : min={:+8.4} max={:+8.4} |max|={:8.4} final={:+8.4} rad/s",
-        min(&gz), max(&gz), abs_max(&gz), final_val(&gz),
+        min(&gz),
+        max(&gz),
+        abs_max(&gz),
+        final_val(&gz),
     );
 }
 
@@ -136,7 +145,7 @@ fn compare(pitch_run: &Trace, roll_run: &Trace) {
     let mut leak_roll_into_pitch: f64 = 0.0;
     for i in 0..n {
         let oy_pitch = pitch_run.samples[i].2; // on-axis
-        let ox_roll = roll_run.samples[i].1;   // on-axis
+        let ox_roll = roll_run.samples[i].1; // on-axis
         let diff = oy_pitch - ox_roll;
         max_abs_diff = max_abs_diff.max(diff.abs());
         sum_sq_diff += diff * diff;
@@ -159,10 +168,14 @@ fn compare(pitch_run: &Trace, roll_run: &Trace) {
         "  on-axis  max |ω_pitch.y − ω_roll.x| : {:.6e} rad/s   ({:.4}% of pitch RMS)",
         max_abs_diff, rel_diff_pct
     );
-    println!("  cross-axis leakage in pitch run (max |ω_x|) : {:.6e} rad/s",
-        leak_pitch_into_roll);
-    println!("  cross-axis leakage in roll  run (max |ω_y|) : {:.6e} rad/s",
-        leak_roll_into_pitch);
+    println!(
+        "  cross-axis leakage in pitch run (max |ω_x|) : {:.6e} rad/s",
+        leak_pitch_into_roll
+    );
+    println!(
+        "  cross-axis leakage in roll  run (max |ω_y|) : {:.6e} rad/s",
+        leak_roll_into_pitch
+    );
     println!();
     if rel_diff_pct.is_finite() && rel_diff_pct < 1.0 {
         println!("→ PHYSICS IS SYMMETRIC. Asymmetry must be in PX4 / closed-loop side.");
@@ -175,14 +188,27 @@ fn main() {
     let config = build_config();
     let hover_omega = config.hover_motor_speed();
 
-    println!("Config: mass={:.3}kg  Ixx={:.5}  Iyy={:.5}  Izz={:.5}  hover_ω={:.1}rad/s",
-        config.mass_kg, config.inertia[0], config.inertia[1], config.inertia[2], hover_omega);
-    println!("Perturbation: ±{:.1}% of hover_ω, applied as motor command for {:.2}s @ 400Hz",
-        PERTURBATION * 100.0, DT * STEPS as f64);
+    println!(
+        "Config: mass={:.3}kg  Ixx={:.5}  Iyy={:.5}  Izz={:.5}  hover_ω={:.1}rad/s",
+        config.mass_kg, config.inertia[0], config.inertia[1], config.inertia[2], hover_omega
+    );
+    println!(
+        "Perturbation: ±{:.1}% of hover_ω, applied as motor command for {:.2}s @ 400Hz",
+        PERTURBATION * 100.0,
+        DT * STEPS as f64
+    );
     println!();
 
-    let pitch_run = run("+τ_pitch  (front motors faster)", &config, pitch_pattern(hover_omega));
-    let roll_run  = run("+τ_roll   (left motors faster)",  &config, roll_pattern(hover_omega));
+    let pitch_run = run(
+        "+τ_pitch  (front motors faster)",
+        &config,
+        pitch_pattern(hover_omega),
+    );
+    let roll_run = run(
+        "+τ_roll   (left motors faster)",
+        &config,
+        roll_pattern(hover_omega),
+    );
     report(&pitch_run);
     report(&roll_run);
     compare(&pitch_run, &roll_run);

@@ -274,17 +274,29 @@ impl MagChip {
     pub fn mag_profile(&self) -> Option<MagProfile> {
         match self {
             // ~0.6 mGauss noise
-            MagChip::Hmc5883 => Some(MagProfile { noise_sigma_gauss: 0.0006 }),
+            MagChip::Hmc5883 => Some(MagProfile {
+                noise_sigma_gauss: 0.0006,
+            }),
             // ~0.5 mGauss; cheap, temperature-unstable
-            MagChip::Qmc5883 => Some(MagProfile { noise_sigma_gauss: 0.0005 }),
+            MagChip::Qmc5883 => Some(MagProfile {
+                noise_sigma_gauss: 0.0005,
+            }),
             // ~0.3 mGauss
-            MagChip::Ist8310 => Some(MagProfile { noise_sigma_gauss: 0.0003 }),
+            MagChip::Ist8310 => Some(MagProfile {
+                noise_sigma_gauss: 0.0003,
+            }),
             // ~0.013 mGauss — high-performance fluxgate-class
-            MagChip::Rm3100 => Some(MagProfile { noise_sigma_gauss: 0.000013 }),
+            MagChip::Rm3100 => Some(MagProfile {
+                noise_sigma_gauss: 0.000013,
+            }),
             // ~0.32 mGauss
-            MagChip::Lis3mdl => Some(MagProfile { noise_sigma_gauss: 0.00032 }),
+            MagChip::Lis3mdl => Some(MagProfile {
+                noise_sigma_gauss: 0.00032,
+            }),
             MagChip::None => None,
-            MagChip::Other => Some(MagProfile { noise_sigma_gauss: 0.0006 }),
+            MagChip::Other => Some(MagProfile {
+                noise_sigma_gauss: 0.0006,
+            }),
         }
     }
 }
@@ -303,12 +315,24 @@ impl BaroChip {
     /// Datasheet-derived altitude noise standard deviation.
     pub fn baro_profile(&self) -> BaroProfile {
         match self {
-            BaroChip::Bmp280 => BaroProfile { noise_sigma_m: 0.16 },
-            BaroChip::Bmp388 => BaroProfile { noise_sigma_m: 0.08 },
-            BaroChip::Dps310 => BaroProfile { noise_sigma_m: 0.05 }, // best in class
-            BaroChip::Spl06  => BaroProfile { noise_sigma_m: 0.10 },
-            BaroChip::Ms5611 => BaroProfile { noise_sigma_m: 0.10 },
-            BaroChip::Other  => BaroProfile { noise_sigma_m: 0.15 },
+            BaroChip::Bmp280 => BaroProfile {
+                noise_sigma_m: 0.16,
+            },
+            BaroChip::Bmp388 => BaroProfile {
+                noise_sigma_m: 0.08,
+            },
+            BaroChip::Dps310 => BaroProfile {
+                noise_sigma_m: 0.05,
+            }, // best in class
+            BaroChip::Spl06 => BaroProfile {
+                noise_sigma_m: 0.10,
+            },
+            BaroChip::Ms5611 => BaroProfile {
+                noise_sigma_m: 0.10,
+            },
+            BaroChip::Other => BaroProfile {
+                noise_sigma_m: 0.15,
+            },
         }
     }
 }
@@ -507,7 +531,10 @@ impl BuildSpec {
         }
         physics.esc = EscConfig {
             continuous_amps: self.escs.continuous_amps,
-            burst_amps: self.escs.burst_amps.unwrap_or(self.escs.continuous_amps * 1.2),
+            burst_amps: self
+                .escs
+                .burst_amps
+                .unwrap_or(self.escs.continuous_amps * 1.2),
             response_tau_s: self.escs.response_tau_ms.unwrap_or(3.0) / 1000.0,
             ..EscConfig::default()
         };
@@ -628,7 +655,10 @@ impl BuildSpec {
         let l_default = (self.frame.wheelbase_mm / 1000.0) / 2f64.sqrt();
         (
             self.frame.width_mm.map(|w| w / 1000.0).unwrap_or(l_default),
-            self.frame.length_mm.map(|l| l / 1000.0).unwrap_or(l_default),
+            self.frame
+                .length_mm
+                .map(|l| l / 1000.0)
+                .unwrap_or(l_default),
             self.frame.height_mm.map(|h| h / 1000.0).unwrap_or(0.030),
         )
     }
@@ -737,7 +767,10 @@ impl BuildSpec {
             motors: MotorSpec {
                 kv: 12000.0, // 0802 12000KV
                 weight_g: 2.5,
-                stator_size: Some(StatorSize { diameter_mm: 8.0, height_mm: 2.0 }),
+                stator_size: Some(StatorSize {
+                    diameter_mm: 8.0,
+                    height_mm: 2.0,
+                }),
                 no_load_amps: Some(0.3),
                 resistance_ohm: Some(0.35),
             },
@@ -793,7 +826,10 @@ impl BuildSpec {
             motors: MotorSpec {
                 kv: 1700.0, // 2306 1700KV
                 weight_g: 33.0,
-                stator_size: Some(StatorSize { diameter_mm: 23.0, height_mm: 6.0 }),
+                stator_size: Some(StatorSize {
+                    diameter_mm: 23.0,
+                    height_mm: 6.0,
+                }),
                 no_load_amps: Some(0.5),
                 resistance_ohm: Some(0.065),
             },
@@ -849,7 +885,10 @@ impl BuildSpec {
             motors: MotorSpec {
                 kv: 1500.0, // 2306 1500KV for 6S
                 weight_g: 35.0,
-                stator_size: Some(StatorSize { diameter_mm: 23.0, height_mm: 6.0 }),
+                stator_size: Some(StatorSize {
+                    diameter_mm: 23.0,
+                    height_mm: 6.0,
+                }),
                 no_load_amps: Some(0.6),
                 resistance_ohm: Some(0.055),
             },
@@ -905,7 +944,10 @@ impl BuildSpec {
             motors: MotorSpec {
                 kv: 1300.0, // 2806.5 1300KV
                 weight_g: 52.0,
-                stator_size: Some(StatorSize { diameter_mm: 28.0, height_mm: 6.5 }),
+                stator_size: Some(StatorSize {
+                    diameter_mm: 28.0,
+                    height_mm: 6.5,
+                }),
                 no_load_amps: Some(0.7),
                 resistance_ohm: Some(0.045),
             },
@@ -967,7 +1009,10 @@ impl Default for BuildSpec {
             motors: MotorSpec {
                 kv: 1700.0,
                 weight_g: 33.0,
-                stator_size: Some(StatorSize { diameter_mm: 23.0, height_mm: 6.0 }),
+                stator_size: Some(StatorSize {
+                    diameter_mm: 23.0,
+                    height_mm: 6.0,
+                }),
                 no_load_amps: None,
                 resistance_ohm: None,
             },
@@ -1022,8 +1067,10 @@ mod tests {
 
         // Mass differs: to_physics_config uses total_mass_kg() (all components),
         // from_build_specs uses only frame + 4×motor
-        assert!(via_build.mass_kg > direct.mass_kg,
-            "BuildSpec mass should include battery, ESCs, props, FC");
+        assert!(
+            via_build.mass_kg > direct.mass_kg,
+            "BuildSpec mass should include battery, ESCs, props, FC"
+        );
 
         // Geometry / inertia / drag inherit from the legacy path unchanged.
         assert_eq!(via_build.arm_length_m, direct.arm_length_m);
@@ -1041,7 +1088,9 @@ mod tests {
         assert!(
             kt_ratio > 0.15 && kt_ratio < 0.40,
             "kt de-inflation ratio {:.3} outside [0.15, 0.40] (got {:.4e}, legacy {:.4e})",
-            kt_ratio, via_build.kt, direct.kt,
+            kt_ratio,
+            via_build.kt,
+            direct.kt,
         );
 
         // kt from the lookup should be physically reasonable: CT_aero in [0.08, 0.14]
@@ -1057,12 +1106,18 @@ mod tests {
     #[test]
     fn battery_spec_nominal_voltage() {
         let four_s = BatterySpec {
-            cell_count: 4, capacity_mah: 1500.0, c_rating: 75.0,
-            weight_g: 180.0, internal_resistance_mohm: None,
+            cell_count: 4,
+            capacity_mah: 1500.0,
+            c_rating: 75.0,
+            weight_g: 180.0,
+            internal_resistance_mohm: None,
         };
         assert!((four_s.nominal_voltage() - 14.8).abs() < 1e-9);
 
-        let six_s = BatterySpec { cell_count: 6, ..four_s };
+        let six_s = BatterySpec {
+            cell_count: 6,
+            ..four_s
+        };
         assert!((six_s.nominal_voltage() - 22.2).abs() < 1e-9);
     }
 
@@ -1084,12 +1139,19 @@ mod tests {
         // Default battery = 180g, ESCs = 12g, props = 4×3g = 12g, FC = 8g
         // Total = 80 + 36 + 180 + 12 + 12 + 8 = 328g = 0.328 kg
         let expected_mass = spec.total_mass_kg();
-        assert!((physics.mass_kg - expected_mass).abs() < 1e-6,
-            "physics.mass_kg {} should match total_mass_kg {}", physics.mass_kg, expected_mass);
+        assert!(
+            (physics.mass_kg - expected_mass).abs() < 1e-6,
+            "physics.mass_kg {} should match total_mass_kg {}",
+            physics.mass_kg,
+            expected_mass
+        );
         // Hover throttle must remain achievable (< 80% of max omega)
         let hover_ratio = physics.hover_motor_speed() / physics.max_motor_speed_from_voltage();
-        assert!(hover_ratio > 0.05 && hover_ratio < 0.8,
-                "Hover/max ratio {} out of physical range", hover_ratio);
+        assert!(
+            hover_ratio > 0.05 && hover_ratio < 0.8,
+            "Hover/max ratio {} out of physical range",
+            hover_ratio
+        );
     }
 
     #[test]
@@ -1189,7 +1251,11 @@ mod tests {
         assert!(ixx_3 < ixx_5);
         assert!(izz_3 < izz_5);
         // Magnitude: should be small but nonzero.
-        assert!(ixx_3 > 1e-5 && ixx_3 < 1e-3, "3\" Ixx={} unreasonable", ixx_3);
+        assert!(
+            ixx_3 > 1e-5 && ixx_3 < 1e-3,
+            "3\" Ixx={} unreasonable",
+            ixx_3
+        );
         assert!(izz_3 > ixx_3, "Izz must exceed Ixx for 3\" too");
     }
 
@@ -1201,7 +1267,11 @@ mod tests {
         assert!(izz_7 > izz_5);
         // 7" 1.25kg builds: Ixx 0.003-0.020. Heavier builds (1.8kg with GoPro)
         // reach 0.015-0.030 — outside this test's reference build.
-        assert!(ixx_7 > 0.003 && ixx_7 < 0.020, "7\" Ixx={} out of range", ixx_7);
+        assert!(
+            ixx_7 > 0.003 && ixx_7 < 0.020,
+            "7\" Ixx={} out of range",
+            ixx_7
+        );
         assert!(izz_7 > ixx_7);
     }
 
@@ -1210,8 +1280,12 @@ mod tests {
         // Physical inertia for a 5" must be **below** the legacy 0.012 floor.
         let [ixx, _, izz] = BuildSpec::default().compute_inertia();
         let legacy = BuildSpec::default().to_physics_config();
-        assert!(ixx < legacy.inertia[0],
-            "physical Ixx {} should be below legacy {}", ixx, legacy.inertia[0]);
+        assert!(
+            ixx < legacy.inertia[0],
+            "physical Ixx {} should be below legacy {}",
+            ixx,
+            legacy.inertia[0]
+        );
         // Izz may or may not be below the floor depending on geometry; just
         // confirm we're not anywhere near the legacy enforcement.
         assert!(izz > 0.0);
@@ -1297,8 +1371,14 @@ mod tests {
         assert_eq!(cfg.cell_count, 6);
         assert!((cfg.capacity_mah - 4500.0).abs() < 1e-9);
         assert!((cfg.discharge_rate_c - 100.0).abs() < 1e-9);
-        // R_int default for 6S 100C: 6 × 200/100 / 1000 = 0.012 Ω
-        assert!((cfg.internal_resistance_ohm - 0.012).abs() < 1e-9);
+        // R_int for 6S: canonical fitted median 7.9288 mΩ/cell × 6 cells = 47.57 mΩ
+        // (seed=20260623; previously 6 × 200/100 / 1000 = 0.012 Ω from the 200/C heuristic)
+        let expected_r = 6.0 * 7.9288 / 1000.0;
+        assert!(
+            (cfg.internal_resistance_ohm - expected_r).abs() < 1e-6,
+            "Expected R_int {expected_r:.6} Ω, got {:.6}",
+            cfg.internal_resistance_ohm
+        );
     }
 
     #[test]
@@ -1315,11 +1395,17 @@ mod tests {
         let cfg = BuildSpec::default().to_battery_config();
         let state = BatteryState::fully_charged(&cfg);
         let v_ocv = state.voltage();
-        // 80 A burst draw with default 4S 75C (R_int ≈ 10.7 mΩ) → sag ≈ 0.85 V
+        // 80 A burst draw with default 4S: fitted R = 9.2875 mΩ/cell × 4 = 37.15 mΩ
+        // sag = 80 A × 0.03715 Ω ≈ 2.97 V (higher than old 200/C heuristic because
+        // the fitted value reflects real pack resistance, not an optimistic C-rating estimate)
         let v_loaded = state.v_terminal(80.0, cfg.internal_resistance_ohm);
-        assert!(v_loaded < v_ocv);
+        assert!(v_loaded < v_ocv, "loaded voltage must be below OCV");
         let sag = v_ocv - v_loaded;
-        assert!(sag > 0.5 && sag < 1.5, "expected ~0.85V sag, got {}", sag);
+        // Real-log fitted R yields 2.0–4.0 V sag at 80 A for a typical 4S pack
+        assert!(
+            sag > 1.0 && sag < 5.0,
+            "expected 1–5 V sag at 80 A, got {sag}"
+        );
     }
 
     #[test]
@@ -1342,8 +1428,11 @@ mod tests {
         let icm = ImuChip::Icm42688p.imu_profile();
         // ICM42688P is roughly 17× quieter on the gyro
         let ratio = mpu.gyro_noise_density / icm.gyro_noise_density;
-        assert!(ratio > 10.0 && ratio < 25.0,
-            "expected ICM gyro to be 10-25× quieter, got {}×", ratio);
+        assert!(
+            ratio > 10.0 && ratio < 25.0,
+            "expected ICM gyro to be 10-25× quieter, got {}×",
+            ratio
+        );
         // Accel is similarly quieter
         assert!(icm.accel_noise_density < mpu.accel_noise_density);
     }
@@ -1380,14 +1469,22 @@ mod tests {
     #[test]
     fn dps310_is_best_baro() {
         let baro_chips = [
-            BaroChip::Bmp280, BaroChip::Bmp388, BaroChip::Dps310,
-            BaroChip::Spl06, BaroChip::Ms5611,
+            BaroChip::Bmp280,
+            BaroChip::Bmp388,
+            BaroChip::Dps310,
+            BaroChip::Spl06,
+            BaroChip::Ms5611,
         ];
         let dps_noise = BaroChip::Dps310.baro_profile().noise_sigma_m;
         for chip in &baro_chips {
             let n = chip.baro_profile().noise_sigma_m;
-            assert!(dps_noise <= n,
-                "DPS310 should have lowest noise, but {:?} has {} < {}", chip, n, dps_noise);
+            assert!(
+                dps_noise <= n,
+                "DPS310 should have lowest noise, but {:?} has {} < {}",
+                chip,
+                n,
+                dps_noise
+            );
         }
     }
 
@@ -1448,18 +1545,27 @@ mod tests {
             GpsChipset::UbloxF9P,
             GpsChipset::Here3,
         ];
-        let mosaic = GpsChipset::SeptentrioMosaic.gps_profile().horizontal_noise_sigma_m;
+        let mosaic = GpsChipset::SeptentrioMosaic
+            .gps_profile()
+            .horizontal_noise_sigma_m;
         for chip in &candidates {
             let n = chip.gps_profile().horizontal_noise_sigma_m;
-            assert!(mosaic <= n,
-                "Mosaic should beat {:?}: {} vs {}", chip, mosaic, n);
+            assert!(
+                mosaic <= n,
+                "Mosaic should beat {:?}: {} vs {}",
+                chip,
+                mosaic,
+                n
+            );
         }
     }
 
     #[test]
     fn m9n_has_higher_update_rate_than_m8n() {
-        assert!(GpsChipset::UbloxM9N.gps_profile().update_rate_hz
-              > GpsChipset::UbloxM8N.gps_profile().update_rate_hz);
+        assert!(
+            GpsChipset::UbloxM9N.gps_profile().update_rate_hz
+                > GpsChipset::UbloxM8N.gps_profile().update_rate_hz
+        );
     }
 
     #[test]
@@ -1475,11 +1581,17 @@ mod tests {
     #[test]
     fn ttff_warm_under_5_seconds_for_consumer_chips() {
         for chip in [
-            GpsChipset::UbloxM8N, GpsChipset::UbloxM9N, GpsChipset::UbloxM10,
-            GpsChipset::UbloxF9P, GpsChipset::Here3,
+            GpsChipset::UbloxM8N,
+            GpsChipset::UbloxM9N,
+            GpsChipset::UbloxM10,
+            GpsChipset::UbloxF9P,
+            GpsChipset::Here3,
         ] {
-            assert!(chip.gps_profile().ttff_warm_s <= 5.0,
-                "{:?} warm TTFF should be ≤5s", chip);
+            assert!(
+                chip.gps_profile().ttff_warm_s <= 5.0,
+                "{:?} warm TTFF should be ≤5s",
+                chip
+            );
         }
     }
 
@@ -1527,8 +1639,12 @@ mod tests {
         // physical path uses compute_inertia() (no floors)
         assert_ne!(safe.inertia, physical.inertia);
         // Physical inertia should be lower (no floors)
-        assert!(physical.inertia[0] < safe.inertia[0],
-            "physical Ixx {} should be below safe {}", physical.inertia[0], safe.inertia[0]);
+        assert!(
+            physical.inertia[0] < safe.inertia[0],
+            "physical Ixx {} should be below safe {}",
+            physical.inertia[0],
+            safe.inertia[0]
+        );
 
         // Drag differs: safe uses legacy formula, physical uses compute_drag_coeffs()
         assert_ne!(safe.drag_coeffs, physical.drag_coeffs);

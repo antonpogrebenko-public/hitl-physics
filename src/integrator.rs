@@ -41,48 +41,41 @@ pub fn rk4_step(
     // y_new = y + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
     let mut new_state = QuadrotorState::default();
 
-    // Position
+    // RK4 weight combiner: (dt/6) * (a + 2b + 2c + d)
+    let w = |a: f64, b: f64, c: f64, d: f64| (dt / 6.0) * (a + 2.0 * b + 2.0 * c + d);
+
+    // Position (derivative = velocity)
     for i in 0..3 {
         new_state.position[i] = state.position[i]
-            + (dt / 6.0)
-                * (k1.velocity[i] + 2.0 * k2.velocity[i] + 2.0 * k3.velocity[i] + k4.velocity[i]);
+            + w(
+                k1.velocity[i],
+                k2.velocity[i],
+                k3.velocity[i],
+                k4.velocity[i],
+            );
     }
 
-    // Velocity
+    // Velocity (derivative = acceleration)
     for i in 0..3 {
         new_state.velocity[i] = state.velocity[i]
-            + (dt / 6.0)
-                * (k1.acceleration[i]
-                    + 2.0 * k2.acceleration[i]
-                    + 2.0 * k3.acceleration[i]
-                    + k4.acceleration[i]);
+            + w(
+                k1.acceleration[i],
+                k2.acceleration[i],
+                k3.acceleration[i],
+                k4.acceleration[i],
+            );
     }
 
-    // Quaternion
+    // Quaternion — blend 4 elements then renormalize
     let quat = state.quaternion.as_ref();
-    let dq = [
-        (dt / 6.0)
-            * (k1.quaternion_deriv[0]
-                + 2.0 * k2.quaternion_deriv[0]
-                + 2.0 * k3.quaternion_deriv[0]
-                + k4.quaternion_deriv[0]),
-        (dt / 6.0)
-            * (k1.quaternion_deriv[1]
-                + 2.0 * k2.quaternion_deriv[1]
-                + 2.0 * k3.quaternion_deriv[1]
-                + k4.quaternion_deriv[1]),
-        (dt / 6.0)
-            * (k1.quaternion_deriv[2]
-                + 2.0 * k2.quaternion_deriv[2]
-                + 2.0 * k3.quaternion_deriv[2]
-                + k4.quaternion_deriv[2]),
-        (dt / 6.0)
-            * (k1.quaternion_deriv[3]
-                + 2.0 * k2.quaternion_deriv[3]
-                + 2.0 * k3.quaternion_deriv[3]
-                + k4.quaternion_deriv[3]),
-    ];
-
+    let dq: [f64; 4] = std::array::from_fn(|i| {
+        w(
+            k1.quaternion_deriv[i],
+            k2.quaternion_deriv[i],
+            k3.quaternion_deriv[i],
+            k4.quaternion_deriv[i],
+        )
+    });
     let new_quat = Quaternion::new(
         quat.w + dq[0],
         quat.i + dq[1],
@@ -94,32 +87,35 @@ pub fn rk4_step(
     // Angular velocity
     for i in 0..3 {
         new_state.angular_velocity[i] = state.angular_velocity[i]
-            + (dt / 6.0)
-                * (k1.angular_accel[i]
-                    + 2.0 * k2.angular_accel[i]
-                    + 2.0 * k3.angular_accel[i]
-                    + k4.angular_accel[i]);
+            + w(
+                k1.angular_accel[i],
+                k2.angular_accel[i],
+                k3.angular_accel[i],
+                k4.angular_accel[i],
+            );
     }
 
-    // Motor speeds
+    // Motor speeds (clamped to non-negative to prevent numerical overshoot)
     for i in 0..4 {
         new_state.motor_speeds[i] = (state.motor_speeds[i]
-            + (dt / 6.0)
-                * (k1.motor_derivs[i]
-                    + 2.0 * k2.motor_derivs[i]
-                    + 2.0 * k3.motor_derivs[i]
-                    + k4.motor_derivs[i]))
-            .max(0.0);
+            + w(
+                k1.motor_derivs[i],
+                k2.motor_derivs[i],
+                k3.motor_derivs[i],
+                k4.motor_derivs[i],
+            ))
+        .max(0.0);
     }
 
     // Motor temperatures
     for i in 0..4 {
         new_state.motor_temps[i] = state.motor_temps[i]
-            + (dt / 6.0)
-                * (k1.motor_temp_derivs[i]
-                    + 2.0 * k2.motor_temp_derivs[i]
-                    + 2.0 * k3.motor_temp_derivs[i]
-                    + k4.motor_temp_derivs[i]);
+            + w(
+                k1.motor_temp_derivs[i],
+                k2.motor_temp_derivs[i],
+                k3.motor_temp_derivs[i],
+                k4.motor_temp_derivs[i],
+            );
     }
 
     new_state
@@ -140,7 +136,8 @@ fn apply_derivative(
     }
 
     for i in 0..4 {
-        new_state.motor_speeds[i] = (new_state.motor_speeds[i] + dt * deriv.motor_derivs[i]).max(0.0);
+        new_state.motor_speeds[i] =
+            (new_state.motor_speeds[i] + dt * deriv.motor_derivs[i]).max(0.0);
         new_state.motor_temps[i] += dt * deriv.motor_temp_derivs[i];
     }
 

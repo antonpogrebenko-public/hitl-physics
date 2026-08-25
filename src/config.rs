@@ -93,77 +93,48 @@ impl Default for PhysicsConfig {
         let motor_kv = 1200.0;
         Self {
             mass_kg: 2.0,
-            arm_length_m: 0.11,              // 220mm diagonal frame
-            inertia: [0.015, 0.015, 0.025],   // kg·m² (balanced for PX4 default PIDs - higher Izz reduces yaw oscillation)
-            kt: 1.9e-6,                       // thrust = kt * ω², gives ~12N at 2500 rad/s
-            kq: 5.0e-8,                       // torque = kq * ω², kq/kt ≈ 0.026 (aggressive 5" prop)
-            tau_motor: 0.025,                 // 25ms motor time constant
+            arm_length_m: 0.11,                 // 220mm diagonal frame
+            inertia: [0.015, 0.015, 0.025], // kg·m² (balanced for PX4 default PIDs - higher Izz reduces yaw oscillation)
+            kt: 1.9e-6,                     // thrust = kt * ω², gives ~12N at 2500 rad/s
+            kq: 5.0e-8,                     // torque = kq * ω², kq/kt ≈ 0.026 (aggressive 5" prop)
+            tau_motor: 0.025,               // 25ms motor time constant
             drag_coeffs: [0.016, 0.016, 0.022], // 5" quad: 0.5*ρ*Cd*A ≈ 0.016 lateral, 0.022 vertical
             gravity: 9.80665,
 
             // Electrical parameters for 2306 motor
             motor_kv,
-            motor_resistance_ohm: 0.065,      // Typical 2306 motor winding resistance
-            battery_voltage: 14.8,            // 4S LiPo nominal (4 × 3.7V)
+            motor_resistance_ohm: 0.065, // Typical 2306 motor winding resistance
+            battery_voltage: 14.8,       // 4S LiPo nominal (4 × 3.7V)
             motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * motor_kv),
-            motor_no_load_amps: 0.5,          // Quiescent draw — was hardcoded in motor.rs
+            motor_no_load_amps: 0.5, // Quiescent draw — was hardcoded in motor.rs
             esc: EscConfig::default(),
 
             // Thermal parameters (estimated for 2306 motor ~33g)
-            thermal_mass_j_per_k: 15.0,       // Copper windings + stator mass
+            thermal_mass_j_per_k: 15.0, // Copper windings + stator mass
             thermal_dissipation_w_per_k: 0.8, // Convective cooling with prop airflow
             ambient_temp_c: 25.0,
-            max_motor_temp_c: 100.0,          // Start power derating
-            motor_shutdown_temp_c: 150.0,     // Emergency shutdown
+            max_motor_temp_c: 100.0,      // Start power derating
+            motor_shutdown_temp_c: 150.0, // Emergency shutdown
         }
     }
 }
 
 impl PhysicsConfig {
-    /// Create a new physics config with custom parameters (legacy, uses defaults for electrical/thermal).
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        mass_kg: f64,
-        arm_length_m: f64,
-        inertia: [f64; 3],
-        kt: f64,
-        kq: f64,
-        tau_motor: f64,
-        drag_coeffs: [f64; 3],
-        gravity: f64,
-    ) -> Self {
-        let defaults = Self::default();
-        Self {
-            mass_kg,
-            arm_length_m,
-            inertia,
-            kt,
-            kq,
-            tau_motor,
-            drag_coeffs,
-            gravity,
-            // Use defaults for electrical/thermal
-            motor_kv: defaults.motor_kv,
-            motor_resistance_ohm: defaults.motor_resistance_ohm,
-            battery_voltage: defaults.battery_voltage,
-            motor_kt_electrical: defaults.motor_kt_electrical,
-            motor_no_load_amps: defaults.motor_no_load_amps,
-            esc: defaults.esc,
-            thermal_mass_j_per_k: defaults.thermal_mass_j_per_k,
-            thermal_dissipation_w_per_k: defaults.thermal_dissipation_w_per_k,
-            ambient_temp_c: defaults.ambient_temp_c,
-            max_motor_temp_c: defaults.max_motor_temp_c,
-            motor_shutdown_temp_c: defaults.motor_shutdown_temp_c,
-        }
-    }
-
     pub fn from_motor_specs(
         kv: f64,
         prop_diameter_inches: f64,
         frame_weight_g: f64,
         motor_weight_g: f64,
     ) -> Self {
-        Self::from_build_specs(kv, prop_diameter_inches, prop_diameter_inches * 0.9, 3, frame_weight_g, motor_weight_g, 14.8)
+        Self::from_build_specs(
+            kv,
+            prop_diameter_inches,
+            prop_diameter_inches * 0.9,
+            3,
+            frame_weight_g,
+            motor_weight_g,
+            14.8,
+        )
     }
 
     /// Create config from build specs with full electrical/thermal modeling.
@@ -317,7 +288,8 @@ impl PhysicsConfig {
     pub fn estimated_hover_current_a(&self) -> f64 {
         let omega = self.hover_motor_speed();
         let torque_per_motor = self.kq * omega * omega;
-        let current_per_motor = torque_per_motor / self.motor_kt_electrical + self.motor_no_load_amps;
+        let current_per_motor =
+            torque_per_motor / self.motor_kt_electrical + self.motor_no_load_amps;
         4.0 * current_per_motor
     }
 
@@ -374,7 +346,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = PhysicsConfig::default();
-        assert!((config.mass_kg - 2.0).abs() < 1e-10);  // 2kg quad
+        assert!((config.mass_kg - 2.0).abs() < 1e-10); // 2kg quad
         assert!((config.gravity - 9.80665).abs() < 1e-10);
     }
 
@@ -405,10 +377,15 @@ mod tests {
         // build sits around Ixx≈0.0037, Izz≈0.0063 — the daemon's Phase 6
         // PARAM_SET push scales PX4's rate PIDs to match. Assert physical
         // bounds only.
-        assert!(config.inertia[0] < 0.012,
-            "post-Phase-1 Ixx={} should be below the old floor", config.inertia[0]);
-        assert!(config.inertia[2] > config.inertia[0],
-            "Izz must exceed Ixx for a planar quadrotor");
+        assert!(
+            config.inertia[0] < 0.012,
+            "post-Phase-1 Ixx={} should be below the old floor",
+            config.inertia[0]
+        );
+        assert!(
+            config.inertia[2] > config.inertia[0],
+            "Izz must exceed Ixx for a planar quadrotor"
+        );
     }
 
     #[test]
@@ -418,15 +395,20 @@ mod tests {
         // handle the real low-inertia airframe directly.
         let config = PhysicsConfig::from_motor_specs(1800.0, 5.0, 350.0, 33.0);
         assert!(config.inertia[0] > 0.0);
-        assert!(config.inertia[0] < 0.012,
+        assert!(
+            config.inertia[0] < 0.012,
             "Ixx={} should be below the legacy floor without the override",
-            config.inertia[0]);
+            config.inertia[0]
+        );
         // Hover omega should be reasonable
         let hover = config.hover_motor_speed();
         let max = config.max_motor_speed_from_voltage();
         let hover_ratio = hover / max;
-        assert!(hover_ratio > 0.15 && hover_ratio < 0.6,
-            "Hover/max ratio {} out of range", hover_ratio);
+        assert!(
+            hover_ratio > 0.15 && hover_ratio < 0.6,
+            "Hover/max ratio {} out of range",
+            hover_ratio
+        );
     }
 
     #[test]
@@ -442,9 +424,12 @@ mod tests {
     #[test]
     fn from_build_specs_pitch_and_blades_affect_kt() {
         // Same motor/frame, different props (4S battery)
-        let low_pitch_2blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 3.0, 2, 350.0, 33.0, 14.8);
-        let high_pitch_3blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 3, 350.0, 33.0, 14.8);
-        let high_pitch_4blade = PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 4, 350.0, 33.0, 14.8);
+        let low_pitch_2blade =
+            PhysicsConfig::from_build_specs(1700.0, 5.0, 3.0, 2, 350.0, 33.0, 14.8);
+        let high_pitch_3blade =
+            PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 3, 350.0, 33.0, 14.8);
+        let high_pitch_4blade =
+            PhysicsConfig::from_build_specs(1700.0, 5.0, 5.0, 4, 350.0, 33.0, 14.8);
 
         // Higher pitch = higher kt
         assert!(high_pitch_3blade.kt > low_pitch_2blade.kt);
@@ -461,14 +446,21 @@ mod tests {
         // and stay far below the unclamped value.
         let low_kv = PhysicsConfig::from_build_specs(500.0, 8.0, 4.5, 2, 600.0, 60.0, 22.2);
         let at_floor = PhysicsConfig::from_build_specs(1500.0, 8.0, 4.5, 2, 600.0, 60.0, 22.2);
-        assert!((low_kv.kt - at_floor.kt).abs() < 1e-12, "low-KV kt must clamp to the floor");
+        assert!(
+            (low_kv.kt - at_floor.kt).abs() < 1e-12,
+            "low-KV kt must clamp to the floor"
+        );
 
         // Loaded full-throttle thrust should be physical (not the ~20:1 blowup):
         // total thrust < 10× weight.
         let omega = low_kv.max_motor_speed_from_voltage();
         let total_thrust_n = 4.0 * low_kv.kt * omega * omega;
         let weight_n = low_kv.mass_kg * low_kv.gravity;
-        assert!(total_thrust_n / weight_n < 10.0, "TWR {} unphysical", total_thrust_n / weight_n);
+        assert!(
+            total_thrust_n / weight_n < 10.0,
+            "TWR {} unphysical",
+            total_thrust_n / weight_n
+        );
     }
 
     #[test]
@@ -485,11 +477,14 @@ mod tests {
         let config = PhysicsConfig::default(); // 1200KV, 14.8V
         let max_speed = config.max_motor_speed_from_voltage();
         let no_load_rads = 1200.0 * 14.8 * std::f64::consts::PI / 30.0; // ~1860 rad/s
-        // Torque-balance model: loaded RPM should be 80-95% of no-load for a
-        // mid-KV motor with a reasonable prop load.
+                                                                        // Torque-balance model: loaded RPM should be 80-95% of no-load for a
+                                                                        // mid-KV motor with a reasonable prop load.
         let ratio = max_speed / no_load_rads;
-        assert!(ratio > 0.80 && ratio < 0.95,
-            "loaded/no-load ratio {:.3} outside expected [0.80, 0.95]", ratio);
+        assert!(
+            ratio > 0.80 && ratio < 0.95,
+            "loaded/no-load ratio {:.3} outside expected [0.80, 0.95]",
+            ratio
+        );
     }
 
     #[test]

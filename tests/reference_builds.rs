@@ -32,7 +32,10 @@ macro_rules! assert_in_range {
         assert!(
             v >= $min && v <= $max,
             "{}: expected [{}, {}], got {}",
-            $msg, $min, $max, v
+            $msg,
+            $min,
+            $max,
+            v
         );
     };
 }
@@ -302,7 +305,8 @@ fn all_builds_have_positive_thrust_margin() {
         assert!(
             hover_pct < 0.70,
             "{} hover throttle {}% is too high — needs more thrust margin",
-            name, hover_pct * 100.0
+            name,
+            hover_pct * 100.0
         );
     }
 }
@@ -320,7 +324,8 @@ fn all_builds_produce_positive_climb_rate() {
         assert!(
             climb > 5.0,
             "{} max climb rate {} m/s is too low",
-            name, climb
+            name,
+            climb
         );
     }
 }
@@ -339,7 +344,9 @@ fn all_physics_configs_have_consistent_mass() {
         assert!(
             (physics_mass - total_mass).abs() < 1e-9,
             "{} mass mismatch: physics={} vs total={}",
-            name, physics_mass, total_mass
+            name,
+            physics_mass,
+            total_mass
         );
     }
 }
@@ -380,7 +387,9 @@ fn bench_anchor_iflight_2207_2755kv_at_4s() {
     assert!(
         error_pct < 15.0,
         "bench anchor: model gives {:.0}g vs bench {:.0}g ({:.1}% error, limit 15%)",
-        max_thrust_per_motor_g, bench_g, error_pct
+        max_thrust_per_motor_g,
+        bench_g,
+        error_pct
     );
 }
 

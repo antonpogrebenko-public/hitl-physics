@@ -142,12 +142,7 @@ impl WasmSimulator {
     #[wasm_bindgen]
     pub fn get_quaternion(&self) -> Vec<f32> {
         let quat = self.state.quaternion.as_ref();
-        vec![
-            quat.w as f32,
-            quat.i as f32,
-            quat.j as f32,
-            quat.k as f32,
-        ]
+        vec![quat.w as f32, quat.i as f32, quat.j as f32, quat.k as f32]
     }
 
     /// Get current velocity as [vn, ve, vd] in m/s.

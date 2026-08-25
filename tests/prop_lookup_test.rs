@@ -39,7 +39,9 @@ fn default_5x4_5x3_kt_intentionally_deflated_from_legacy() {
     assert!(
         ratio > 0.15 && ratio < 0.40,
         "kt de-inflation ratio {:.3} outside [0.15, 0.40] (got {:.4e}, legacy {:.4e})",
-        ratio, via_build.kt, legacy.kt
+        ratio,
+        via_build.kt,
+        legacy.kt
     );
     // Absolute sanity: CT_aero in physical FPV range
     let d_m: f64 = 5.0 * 0.0254;
@@ -111,7 +113,8 @@ fn lookup_is_kv_independent() {
     assert!(
         (kt_low - kt_high).abs() < 1e-12,
         "kt should be KV-independent after Phase 5 (got {} vs {})",
-        kt_low, kt_high
+        kt_low,
+        kt_high
     );
 }
 
@@ -132,7 +135,9 @@ fn reference_build_props_resolve_via_table() {
                 LookupSource::ExactMatch | LookupSource::DimensionAverage
             ),
             "{}: prop {:?} did not match an entry (got {:?})",
-            name, build.propellers, coef.source
+            name,
+            build.propellers,
+            coef.source
         );
     }
 }

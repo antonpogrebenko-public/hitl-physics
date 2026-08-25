@@ -18,9 +18,19 @@ fn main() {
 
     println!("Mass: {:.3} kg", physics.mass_kg);
     println!("kt: {:.6e}", physics.kt);
-    println!("Inertia: [{:.5}, {:.5}, {:.5}]", physics.inertia[0], physics.inertia[1], physics.inertia[2]);
+    println!(
+        "Inertia: [{:.5}, {:.5}, {:.5}]",
+        physics.inertia[0], physics.inertia[1], physics.inertia[2]
+    );
     println!("Hover omega: {:.1} rad/s", hover_omega);
     println!("Max omega: {:.1} rad/s", max_omega);
-    println!("Hover throttle: {:.3} ({:.1}%)", hover_throttle, hover_throttle * 100.0);
-    println!("TWR: {:.2}", (4.0 * physics.kt * max_omega * max_omega) / (physics.mass_kg * 9.81));
+    println!(
+        "Hover throttle: {:.3} ({:.1}%)",
+        hover_throttle,
+        hover_throttle * 100.0
+    );
+    println!(
+        "TWR: {:.2}",
+        (4.0 * physics.kt * max_omega * max_omega) / (physics.mass_kg * 9.81)
+    );
 }

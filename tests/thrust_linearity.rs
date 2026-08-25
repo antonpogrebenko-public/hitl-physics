@@ -51,7 +51,10 @@ fn px4_thr_mdl_fac_1_round_trip_is_exact() {
 
     // Exact at full throttle.
     let full = compute_thrust(throttle_to_omega_with_config(1.0, &config), &config) / max_thrust;
-    assert!((full - 1.0).abs() < 1e-9, "full-throttle thrust must equal max_thrust");
+    assert!(
+        (full - 1.0).abs() < 1e-9,
+        "full-throttle thrust must equal max_thrust"
+    );
 }
 
 #[test]

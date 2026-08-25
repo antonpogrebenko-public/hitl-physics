@@ -47,9 +47,9 @@ pub use build::{
 pub use config::{EscConfig, PhysicsConfig};
 pub use integrator::{rk4_step, simulate, DEFAULT_DT};
 pub use motor::{
-    apply_thermal_derating, compute_electrical_power, compute_motor_current, compute_motor_heat,
-    compute_reaction_torque, compute_thrust, motor_derivative, motor_temp_derivative,
-    throttle_to_omega, throttle_to_omega_with_config, DEFAULT_MAX_MOTOR_SPEED, MIN_MOTOR_SPEED,
+    apply_thermal_derating, compute_motor_current, compute_motor_heat, compute_reaction_torque,
+    compute_thrust, motor_derivative, motor_temp_derivative, throttle_to_omega,
+    throttle_to_omega_with_config, DEFAULT_MAX_MOTOR_SPEED, MIN_MOTOR_SPEED,
 };
 pub use quadrotor::{QuadrotorState, StateDerivative};
 

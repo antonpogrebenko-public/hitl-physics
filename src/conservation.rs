@@ -24,7 +24,8 @@ pub fn check_quaternion_norm(state: &QuadrotorState) {
         assert!(
             (norm - 1.0).abs() < TOLERANCE,
             "Quaternion norm drift: |q| = {} (expected 1.0 ± {})",
-            norm, TOLERANCE
+            norm,
+            TOLERANCE
         );
     }
 }
@@ -45,12 +46,15 @@ pub fn check_motor_speeds(state: &QuadrotorState, config: &PhysicsConfig) {
             assert!(
                 omega >= 0.0,
                 "Motor {} speed negative: {} rad/s",
-                i + 1, omega
+                i + 1,
+                omega
             );
             assert!(
                 omega <= max_omega,
                 "Motor {} speed {} rad/s exceeds max {} rad/s",
-                i + 1, omega, max_omega
+                i + 1,
+                omega,
+                max_omega
             );
         }
     }
@@ -73,7 +77,10 @@ pub fn check_motor_temperatures(state: &QuadrotorState, config: &PhysicsConfig) 
             assert!(
                 temp >= min_temp && temp <= max_temp,
                 "Motor {} temperature {} °C out of bounds [{}, {}]",
-                i + 1, temp, min_temp, max_temp
+                i + 1,
+                temp,
+                min_temp,
+                max_temp
             );
         }
     }
@@ -93,15 +100,13 @@ pub fn check_position_bounds(state: &QuadrotorState) {
         const MAX_DISTANCE_M: f64 = 10_000.0;
         for (i, &p) in state.position.iter().enumerate() {
             let axis = ["X", "Y", "Z"][i];
-            assert!(
-                p.is_finite(),
-                "Position {} is not finite: {}",
-                axis, p
-            );
+            assert!(p.is_finite(), "Position {} is not finite: {}", axis, p);
             assert!(
                 p.abs() <= MAX_DISTANCE_M,
                 "Position {} = {} m exceeds {} m simulation bounds",
-                axis, p, MAX_DISTANCE_M
+                axis,
+                p,
+                MAX_DISTANCE_M
             );
         }
     }
@@ -121,15 +126,13 @@ pub fn check_velocity_bounds(state: &QuadrotorState) {
         const MAX_VELOCITY_MPS: f64 = 200.0;
         for (i, &v) in state.velocity.iter().enumerate() {
             let axis = ["Vx", "Vy", "Vz"][i];
-            assert!(
-                v.is_finite(),
-                "Velocity {} is not finite: {}",
-                axis, v
-            );
+            assert!(v.is_finite(), "Velocity {} is not finite: {}", axis, v);
             assert!(
                 v.abs() <= MAX_VELOCITY_MPS,
                 "Velocity {} = {} m/s exceeds {} m/s physical limit",
-                axis, v, MAX_VELOCITY_MPS
+                axis,
+                v,
+                MAX_VELOCITY_MPS
             );
         }
     }
@@ -152,12 +155,15 @@ pub fn check_angular_velocity_bounds(state: &QuadrotorState) {
             assert!(
                 w.is_finite(),
                 "Angular velocity {} is not finite: {}",
-                axis, w
+                axis,
+                w
             );
             assert!(
                 w.abs() <= MAX_OMEGA_RADS,
                 "Angular velocity {} = {} rad/s exceeds {} rad/s limit",
-                axis, w, MAX_OMEGA_RADS
+                axis,
+                w,
+                MAX_OMEGA_RADS
             );
         }
     }
