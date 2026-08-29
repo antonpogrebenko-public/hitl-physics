@@ -11,8 +11,19 @@
 //! times. These vectors are the contract instead: the TypeScript suite asserts
 //! against them, so a change here that moves the numbers fails the web build.
 //!
-//!   cargo run --example golden_vectors > \
-//!     ../th3seus-web/packages/calculators/src/engines/__fixtures__/physics-golden.json
+//! Regenerate with (the format step is REQUIRED, not cosmetic):
+//!
+//!   cargo run --example golden_vectors > /tmp/golden.json \
+//!     && mv /tmp/golden.json \
+//!       ../th3seus-web/packages/calculators/src/engines/__fixtures__/physics-golden.json \
+//!     && (cd ../th3seus-web && npx biome format --write \
+//!       packages/calculators/src/engines/__fixtures__/physics-golden.json)
+//!
+//! th3seus-web runs `biome check .` over the WHOLE repository in CI, and Biome
+//! normalises JSON number literals — it rewrites `1.026000000` to `1.026`. A
+//! fixture committed straight from this generator fails that check, so the
+//! format step has to be part of regenerating, or CI goes red the next time
+//! anyone regenerates.
 use hitl_physics::build::{BuildSpec, GpsChipset, GpsSpec};
 
 struct Case {
