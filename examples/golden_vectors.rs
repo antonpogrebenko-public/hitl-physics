@@ -40,31 +40,75 @@ struct Case {
 const CASES: &[Case] = &[
     Case {
         name: "reported-regression-2212-1000kv-6x4x3-4s",
-        kv: 1000.0, motor_g: 50.5, diameter_in: 6.0, pitch_in: 4.0, blades: 3,
-        cells: 4, capacity_mah: 10_000.0, c_rating: 75.0, battery_g: 1040.0,
-        frame_g: 600.0, esc_total_g: 128.0, esc_burst_a: 80.0, fc_g: 195.0,
-        gps_g: Some(7.5), prop_g: 8.0,
+        kv: 1000.0,
+        motor_g: 50.5,
+        diameter_in: 6.0,
+        pitch_in: 4.0,
+        blades: 3,
+        cells: 4,
+        capacity_mah: 10_000.0,
+        c_rating: 75.0,
+        battery_g: 1040.0,
+        frame_g: 600.0,
+        esc_total_g: 128.0,
+        esc_burst_a: 80.0,
+        fc_g: 195.0,
+        gps_g: Some(7.5),
+        prop_g: 8.0,
     },
     Case {
         name: "five-inch-racer-2306-1700kv-4s",
-        kv: 1700.0, motor_g: 33.0, diameter_in: 5.0, pitch_in: 4.3, blades: 3,
-        cells: 4, capacity_mah: 1300.0, c_rating: 75.0, battery_g: 155.0,
-        frame_g: 115.0, esc_total_g: 12.0, esc_burst_a: 55.0, fc_g: 8.0,
-        gps_g: None, prop_g: 4.5,
+        kv: 1700.0,
+        motor_g: 33.0,
+        diameter_in: 5.0,
+        pitch_in: 4.3,
+        blades: 3,
+        cells: 4,
+        capacity_mah: 1300.0,
+        c_rating: 75.0,
+        battery_g: 155.0,
+        frame_g: 115.0,
+        esc_total_g: 12.0,
+        esc_burst_a: 55.0,
+        fc_g: 8.0,
+        gps_g: None,
+        prop_g: 4.5,
     },
     Case {
         name: "high-kv-micro-12000kv-3x2x3-2s",
-        kv: 12_000.0, motor_g: 2.5, diameter_in: 3.0, pitch_in: 2.0, blades: 3,
-        cells: 2, capacity_mah: 450.0, c_rating: 45.0, battery_g: 30.0,
-        frame_g: 28.0, esc_total_g: 0.0, esc_burst_a: 7.0, fc_g: 0.0,
-        gps_g: None, prop_g: 1.0,
+        kv: 12_000.0,
+        motor_g: 2.5,
+        diameter_in: 3.0,
+        pitch_in: 2.0,
+        blades: 3,
+        cells: 2,
+        capacity_mah: 450.0,
+        c_rating: 45.0,
+        battery_g: 30.0,
+        frame_g: 28.0,
+        esc_total_g: 0.0,
+        esc_burst_a: 7.0,
+        fc_g: 0.0,
+        gps_g: None,
+        prop_g: 1.0,
     },
     Case {
         name: "pack-limited-seven-inch-1300kv-6s",
-        kv: 1300.0, motor_g: 52.0, diameter_in: 7.0, pitch_in: 4.0, blades: 2,
-        cells: 6, capacity_mah: 5000.0, c_rating: 40.0, battery_g: 550.0,
-        frame_g: 200.0, esc_total_g: 20.0, esc_burst_a: 80.0, fc_g: 10.0,
-        gps_g: Some(10.0), prop_g: 7.0,
+        kv: 1300.0,
+        motor_g: 52.0,
+        diameter_in: 7.0,
+        pitch_in: 4.0,
+        blades: 2,
+        cells: 6,
+        capacity_mah: 5000.0,
+        c_rating: 40.0,
+        battery_g: 550.0,
+        frame_g: 200.0,
+        esc_total_g: 20.0,
+        esc_burst_a: 80.0,
+        fc_g: 10.0,
+        gps_g: Some(10.0),
+        prop_g: 7.0,
     },
 ];
 
@@ -130,8 +174,14 @@ fn main() {
         println!("        \"kq\": {:.12e},", p.kq);
         println!("        \"massKg\": {:.9},", p.mass_kg);
         println!("        \"batteryVoltage\": {:.9},", p.battery_voltage);
-        println!("        \"motorResistanceOhm\": {:.9},", p.motor_resistance_ohm);
-        println!("        \"maxCurrentPerMotorA\": {:.9},", p.max_current_per_motor_a);
+        println!(
+            "        \"motorResistanceOhm\": {:.9},",
+            p.motor_resistance_ohm
+        );
+        println!(
+            "        \"maxCurrentPerMotorA\": {:.9},",
+            p.max_current_per_motor_a
+        );
         println!("        \"maxOmegaRadS\": {:.9},", omega);
         println!(
             "        \"maxThrustPerMotorG\": {:.9},",
@@ -141,7 +191,10 @@ fn main() {
             "        \"thrustToWeightRatio\": {:.9},",
             4.0 * p.max_thrust_per_motor_n() / (p.mass_kg * 9.80665)
         );
-        println!("        \"hoverThrottlePercent\": {:.9},", p.hover_throttle_percent());
+        println!(
+            "        \"hoverThrottlePercent\": {:.9},",
+            p.hover_throttle_percent()
+        );
         println!("        \"isCurrentLimited\": {}", p.is_current_limited());
         println!("      }}");
         println!("    }}{comma}");

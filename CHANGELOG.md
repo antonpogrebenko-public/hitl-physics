@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.0 — 2026-08-29
+
+### Changed
+
+- **Blade-count model corrected against measured control pairs.**
+  `0.85 + 0.05*blades` made a three-blade only 1.053x a two-blade. The UIUC
+  Propeller Data Site published the decisive experiment: the DA4022 and DA4052
+  in 5x3.75 and 9x6.75, each run as 2-, 3- and 4-blade on the SAME physical
+  blades with only the hub swapped, isolating blade count from every other
+  variable. Measured static ratios: 1.373, 1.350, 1.264, 1.280. APC's own files
+  give 1.298 and 1.424; CSIR-NAL measured 30% on a six-inch pair.
+
+  Now `(blades/2)^0.7`, giving 1.328. `K_CT` is re-normalised 0.00485 ->
+  0.003651555 so the six-inch three-blade lab anchor is preserved at CT_aero
+  0.180 exactly; what changes is the relationship between blade counts, not the
+  absolute level. Two-blade propellers therefore read about 21% lower than
+  before, which is the correction.
+
+- `examples/regenerate_prop_table` now refuses to run against an empty table.
+  It reads the file it is normally redirected into, and a shell `>` truncates
+  the target before the program starts — so a stale build destroyed the table
+  and the next run emitted a header with no rows.
+
 ## 0.11.0 — 2026-08-29
 
 ### Changed

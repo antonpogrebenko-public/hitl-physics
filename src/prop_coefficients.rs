@@ -191,7 +191,7 @@ pub fn lookup(spec: &PropellerSpec) -> PropCoefficients {
 /// Because they compensate, these two constants must be changed together.
 /// `PhysicsConfig::momentum_theory_thrust_ceiling_n` exists to catch the
 /// combination that made this hard to see.
-const K_CT: f64 = 0.00485;
+const K_CT: f64 = 0.003651555;
 /// Torque/thrust de-inflation: bench kq/kt ≈ 0.0088 vs the legacy ~0.025 ratio.
 const KQ_KT_SCALE: f64 = 0.47625;
 
@@ -206,7 +206,7 @@ pub fn derive_from_basis(spec: &PropellerSpec) -> PropCoefficients {
 
 fn empirical_fallback(spec: &PropellerSpec) -> PropCoefficients {
     let pitch_m = 0.7 + 0.06 * spec.pitch_in;
-    let blade_m = 0.85 + 0.05 * spec.blade_count as f64;
+    let blade_m = blade_multiplier(spec.blade_count);
     let ct = K_CT * pitch_m * blade_m;
     // kq = kt·kq_kt ⇒ cq = ct·kq_kt / D_meters.
     let kq_kt = KQ_KT_SCALE * (0.010 + 0.002 * spec.pitch_in + 0.002 * spec.blade_count as f64);
@@ -226,11 +226,29 @@ fn pitch_ratio(requested: f64, reference: f64) -> f64 {
     (num / den).max(0.1)
 }
 
+/// Thrust multiplier for blade count, normalised to a two-blade propeller.
+///
+/// `(B/2)^0.7`, fitted to the UIUC Propeller Data Site's blade-count control
+/// pairs — the DA4022 and DA4052 in 5x3.75 and 9x6.75, each run as 2-, 3- and
+/// 4-blade on the SAME physical blades with only the hub swapped, so the ratio
+/// isolates blade count from every other variable. Their measured static
+/// three-to-two ratios at 5000 rpm are 1.373, 1.350, 1.264 and 1.280.
+///
+/// Independently: APC's own files give 1.298 for 11x7E vs 11x7E-3 and 1.424
+/// for 5.1x5.0E vs its three-blade, and CSIR-NAL measured 30% on a six-inch
+/// pair of identical plan form. This model gives 1.328.
+///
+/// The previous `0.85 + 0.05*B` gave **1.053** — a three-blade barely ahead of
+/// a two-blade, against measurement clustering near 1.3. A comment in the
+/// coefficient table claimed 15%, which was also unsourced and also wrong.
+/// Thrust does not scale with blade area (that would be 1.5); the exponent is
+/// well below 1 because added blades work in each other's wake.
+fn blade_multiplier(blade_count: i32) -> f64 {
+    (blade_count as f64 / 2.0).powf(0.7)
+}
+
 fn blade_ratio(requested: i32, reference: i32) -> f64 {
-    // Linear blade-count model (0.85 + 0.05·B).
-    let num = 0.85 + 0.05 * requested as f64;
-    let den = 0.85 + 0.05 * reference as f64;
-    (num / den).max(0.1)
+    (blade_multiplier(requested) / blade_multiplier(reference)).max(0.1)
 }
 
 /// Convert coefficients to `(kt, kq)` for a given prop diameter in inches.
@@ -342,7 +360,7 @@ mod tests {
     fn empirical_fallback_uses_physical_ct() {
         // The fallback uses the physical-CT basis: ct = K_CT·pitch_m·blade_m.
         let coef = empirical_fallback(&spec(5.0, 4.5, 3));
-        let expected_ct = K_CT * (0.7 + 0.06 * 4.5) * (0.85 + 0.05 * 3.0);
+        let expected_ct = K_CT * (0.7 + 0.06 * 4.5) * blade_multiplier(3);
         assert!((coef.ct - expected_ct).abs() / expected_ct < 1e-9);
         // Resulting CT_aero must sit in the physical FPV-prop range.
         let ct_aero = coef.ct * (2.0 * std::f64::consts::PI).powi(2);
