@@ -57,8 +57,11 @@ mod tinyhawk_3 {
     #[test]
     fn total_mass_is_realistic() {
         let mass_kg = build().total_mass_kg();
-        // EMAX specs: 75g AUW with 2S 450mAh
-        assert_in_range!(mass_kg, 0.065, 0.085, "Tinyhawk 3 mass");
+        // 32 g dry (EMAX BNF manual v2.0) + 12.5 g stock 1S 450 mAh pack
+        // (ReadyMadeRC) = 44.5 g. DERIVED: no vendor publishes an all-up
+        // weight for this airframe. The previous 0.065-0.085 band came with
+        // the 2S/3-inch record that described a different machine.
+        assert_in_range!(mass_kg, 0.042, 0.048, "Tinyhawk 3 mass");
     }
 
     #[test]
@@ -130,7 +133,10 @@ mod impulse_apex_5 {
     fn total_mass_is_realistic() {
         let mass_kg = build().total_mass_kg();
         // Typical 5" build: 400-500g with lightweight 4S 1300mAh
-        assert_in_range!(mass_kg, 0.38, 0.52, "Apex 5 mass");
+        // 378 g dry / 542 g all-up, from a documented build of this exact
+        // frame with a 4S 1300 pack (rotorbuilds.com/build/26613). The
+        // previous band excluded the FPV gear the model has no field for.
+        assert_in_range!(mass_kg, 0.52, 0.56, "Apex 5 mass");
     }
 
     #[test]
@@ -175,18 +181,21 @@ mod impulse_apex_5 {
 // =============================================================================
 // Model produces: hover ~13%, current ~20A, climb ~100 m/s
 
-mod geprc_mark5_6 {
+mod geprc_mark5 {
     use super::*;
 
     fn build() -> BuildSpec {
-        BuildSpec::geprc_mark5_6()
+        BuildSpec::geprc_mark5()
     }
 
     #[test]
     fn total_mass_is_realistic() {
         let mass_kg = build().total_mass_kg();
         // 6" builds with 6S 1100mAh: 480-580g
-        assert_in_range!(mass_kg, 0.46, 0.60, "MARK5 6 mass");
+        // 385.0 g published dry (MARK5 Analog 6S TBS) + 226.0 g Storm 6S
+        // 1400 mAh, GEPRC's own recommended pack = 611 g. GEPRC publishes no
+        // all-up weight anywhere in the MARK5 line, so this is derived.
+        assert_in_range!(mass_kg, 0.58, 0.64, "MARK5 mass");
     }
 
     #[test]
@@ -195,7 +204,7 @@ mod geprc_mark5_6 {
         let hover_pct = physics.hover_throttle_percent();
         // Model produces ~13% (6S is very efficient). Real: 25-35%.
         // Gate: 8-40%.
-        assert_in_range!(hover_pct, 0.08, 0.40, "MARK5 6 hover throttle");
+        assert_in_range!(hover_pct, 0.08, 0.40, "MARK5 hover throttle");
     }
 
     #[test]
@@ -204,7 +213,7 @@ mod geprc_mark5_6 {
         let hover_a = physics.estimated_hover_current_a();
         // Post-recalibration: lower kq → lower current. Model ~8.5A.
         // Real: 15-25A. Gate: 5-35A.
-        assert_in_range!(hover_a, 5.0, 35.0, "MARK5 6 hover current");
+        assert_in_range!(hover_a, 5.0, 35.0, "MARK5 hover current");
     }
 
     #[test]
@@ -212,7 +221,7 @@ mod geprc_mark5_6 {
         let physics = build().to_physics_config();
         let climb_mps = physics.estimated_max_climb_rate_mps();
         // Torque-balance model gives realistic max speed. Gate: 10-150 m/s.
-        assert_in_range!(climb_mps, 10.0, 150.0, "MARK5 6 max climb rate");
+        assert_in_range!(climb_mps, 10.0, 150.0, "MARK5 max climb rate");
     }
 
     #[test]
@@ -221,7 +230,7 @@ mod geprc_mark5_6 {
         let hover_time_s = physics.estimated_hover_time_s(1100.0);
         // Lower current → longer hover. Model ~372s. Real: 2.5-4 min.
         // Gate: 60-600s.
-        assert_in_range!(hover_time_s, 60.0, 600.0, "MARK5 6 hover time");
+        assert_in_range!(hover_time_s, 60.0, 600.0, "MARK5 hover time");
     }
 }
 
@@ -241,7 +250,10 @@ mod iflight_chimera_7 {
     fn total_mass_is_realistic() {
         let mass_kg = build().total_mass_kg();
         // 7" long-range: 1000-1150g with 6S 4000mAh
-        assert_in_range!(mass_kg, 0.95, 1.20, "Chimera 7 mass");
+        // 705 g published dry (Pro V2 6S Analog) + 840 g Fullsend 6S2P
+        // 8000 mAh Li-ion = 1545 g. iFlight's own sheet says 1621 g, but
+        // against the older, heavier Samsung 21700 pack revision.
+        assert_in_range!(mass_kg, 1.50, 1.62, "Chimera 7 mass");
     }
 
     #[test]
@@ -250,7 +262,11 @@ mod iflight_chimera_7 {
         let hover_pct = physics.hover_throttle_percent();
         // Model produces ~15%. Real long-range 7": 20-35%.
         // Gate: 8-40%.
-        assert_in_range!(hover_pct, 0.08, 0.40, "Chimera 7 hover throttle");
+        // Now pack-limited: 8 Ah of Li-ion at a printed 17.5C shared four
+        // ways is 35 A per motor, under the ESC's 65 A. A long-range build
+        // hovering near 40% is what that ceiling implies, and far more
+        // credible than the 8-40% the 50C LiPo record allowed.
+        assert_in_range!(hover_pct, 0.30, 0.50, "Chimera 7 hover throttle");
     }
 
     #[test]
@@ -297,12 +313,12 @@ mod iflight_chimera_7 {
 fn builds_are_ordered_by_mass() {
     let tinyhawk = BuildSpec::tinyhawk_3().total_mass_kg();
     let apex = BuildSpec::impulse_apex_5().total_mass_kg();
-    let mark5 = BuildSpec::geprc_mark5_6().total_mass_kg();
+    let mark5 = BuildSpec::geprc_mark5().total_mass_kg();
     let chimera = BuildSpec::iflight_chimera_7().total_mass_kg();
 
     assert!(tinyhawk < apex, "Tinyhawk should be lighter than Apex 5");
     assert!(apex < mark5, "Apex 5 should be lighter than MARK5 6");
-    assert!(mark5 < chimera, "MARK5 6 should be lighter than Chimera 7");
+    assert!(mark5 < chimera, "MARK5 should be lighter than Chimera 7");
 }
 
 #[test]
@@ -311,7 +327,7 @@ fn all_builds_have_positive_thrust_margin() {
     for (name, build) in [
         ("Tinyhawk 3", BuildSpec::tinyhawk_3()),
         ("Apex 5", BuildSpec::impulse_apex_5()),
-        ("MARK5 6", BuildSpec::geprc_mark5_6()),
+        ("MARK5", BuildSpec::geprc_mark5()),
         ("Chimera 7", BuildSpec::iflight_chimera_7()),
     ] {
         let physics = build.to_physics_config();
@@ -330,7 +346,7 @@ fn all_builds_produce_positive_climb_rate() {
     for (name, build) in [
         ("Tinyhawk 3", BuildSpec::tinyhawk_3()),
         ("Apex 5", BuildSpec::impulse_apex_5()),
-        ("MARK5 6", BuildSpec::geprc_mark5_6()),
+        ("MARK5", BuildSpec::geprc_mark5()),
         ("Chimera 7", BuildSpec::iflight_chimera_7()),
     ] {
         let physics = build.to_physics_config();
@@ -350,7 +366,7 @@ fn all_physics_configs_have_consistent_mass() {
     for (name, build) in [
         ("Tinyhawk 3", BuildSpec::tinyhawk_3()),
         ("Apex 5", BuildSpec::impulse_apex_5()),
-        ("MARK5 6", BuildSpec::geprc_mark5_6()),
+        ("MARK5", BuildSpec::geprc_mark5()),
         ("Chimera 7", BuildSpec::iflight_chimera_7()),
     ] {
         let physics_mass = build.to_physics_config().mass_kg;
@@ -479,7 +495,7 @@ fn print_all_reference_builds() {
     let builds: [(&str, BuildSpec); 4] = [
         ("tinyhawk_3", BuildSpec::tinyhawk_3()),
         ("impulse_apex_5", BuildSpec::impulse_apex_5()),
-        ("geprc_mark5_6", BuildSpec::geprc_mark5_6()),
+        ("geprc_mark5", BuildSpec::geprc_mark5()),
         ("iflight_chimera_7", BuildSpec::iflight_chimera_7()),
     ];
     println!(

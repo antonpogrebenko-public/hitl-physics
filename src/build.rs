@@ -758,51 +758,79 @@ impl BuildSpec {
     // Each includes a comment citing the source of measured/spec data.
     // =========================================================================
 
-    /// EMAX Tinyhawk 3 — 3" whoop, ~75g AUW (2024 revision).
+    // ALL FOUR reference builds were audited against manufacturer sources on
+    // 2026-08-29 and every one of them was materially wrong; several described
+    // a different aircraft than their name claimed. The corrections below each
+    // carry the page they came from.
+    //
+    // `frame.weight_g` is a CATCH-ALL, not the bare frame kit. Published dry
+    // weights are for the whole aircraft — including camera, VTX, antennas,
+    // receiver, wiring and hardware — and `BuildSpec` has no field for any of
+    // that. Putting the remainder in `frame` is what makes each build's dry sum
+    // match its published figure. The alternative, modelling only the parts
+    // that have fields, left `impulse_apex_5` 93 g short of a measured build
+    // and inflated its thrust-to-weight by about 23%.
+
+    /// EMAX Tinyhawk III — 1S 76 mm whoop, ~44.5 g all-up.
     ///
-    /// Sources: EMAX product page (motors, frame), Oscar Liang review (hover ~38%),
-    /// community measured hover current 3-4A on 2S 450mAh.
+    /// Sources: EMAX BNF instruction manual v2.0 (32 g dry, TH0802 II 15000KV,
+    /// 76 mm wheelbase, 5 A 4-in-1 AIO), NextFPV Avia TH listing (40 mm
+    /// four-blade, 31 mm pitch, 0.61 g), ReadyMadeRC (1S HV 450 mAh, 12.5 g).
+    ///
+    /// The previous record described a different machine: 2S, 12000KV, 3-inch
+    /// three-blade props and 75 g. The prop diameter mattered most — `kt`
+    /// scales with D⁴, so 3.0" against a real 1.57" is a factor of 13.3, and
+    /// every thrust figure this build produced was meaningless.
     pub fn tinyhawk_3() -> Self {
         Self {
             frame: FrameSpec {
-                weight_g: 28.0, // Frame + canopy + AIO board
-                wheelbase_mm: 75.0,
-                width_mm: Some(85.0),
-                length_mm: Some(85.0),
-                height_mm: Some(25.0),
+                // 32 g published dry, less motors (10.0) and props (2.44).
+                // Covers the AIO, canopy, camera, VTX and wiring.
+                weight_g: 19.56,
+                wheelbase_mm: 76.0,
+                width_mm: Some(105.0),
+                length_mm: Some(105.0),
+                height_mm: Some(45.0),
                 material: Some(FrameMaterial::Polymer),
             },
             motors: MotorSpec {
-                kv: 12000.0, // 0802 12000KV
+                kv: 15_000.0, // TH0802 II
                 weight_g: 2.5,
                 stator_size: Some(StatorSize {
                     diameter_mm: 8.0,
                     height_mm: 2.0,
                 }),
-                no_load_amps: Some(0.3),
-                resistance_ohm: Some(0.35),
+                no_load_amps: None,
+                resistance_ohm: None,
             },
             escs: EscSpec {
-                continuous_amps: 5.0, // AIO ESC
-                burst_amps: Some(7.0),
+                continuous_amps: 5.0,
+                // Not published for the base model's 5 A AIO. The 6.7 A figure
+                // in circulation belongs to the Tinyhawk III PLUS, a different
+                // product, so the honest ceiling is the published continuous
+                // rating rather than an invented burst.
+                burst_amps: Some(5.0),
                 min_cell_count: 1,
                 max_cell_count: 2,
-                firmware: Some(EscFirmware::BlHeli32),
+                firmware: Some(EscFirmware::Bluejay),
                 response_tau_ms: Some(2.0),
-                weight_g: Some(0.0), // Included in frame
+                weight_g: Some(0.0), // On the AIO, counted in `frame`
             },
             propellers: PropellerSpec {
-                diameter_in: 3.0, // 76mm Avan props
-                pitch_in: 2.0,
-                blade_count: 3,
-                weight_g: Some(1.0),
+                diameter_in: 1.57, // Avia TH, 40 mm
+                pitch_in: 1.22,    // 31 mm
+                blade_count: 4,
+                weight_g: Some(0.61),
             },
             battery: BatterySpec {
-                cell_count: 2,
+                cell_count: 1,
                 capacity_mah: 450.0,
-                c_rating: 45.0,
-                weight_g: 30.0,
-                internal_resistance_mohm: Some(35.0), // 2S small pack
+                // PRINTED 80C. 80C on 450 mAh is 36 A from a 12.5 g cell, which
+                // is not credible — this is a label, not a measurement, and it
+                // sits above the 5 A ESC so the ESC is what actually binds.
+                c_rating: 80.0,
+                weight_g: 12.5,
+                internal_resistance_mohm: Some(35.0),
             },
             flight_controller: FlightControllerSpec {
                 mcu: Some("F4".into()),
@@ -811,20 +839,29 @@ impl BuildSpec {
                 baro_chip: None,
                 loop_rate_hz: 8000,
                 gyro_filter_hz: 200,
-                weight_g: 0.0, // Included in frame (AIO)
+                weight_g: 0.0, // On the AIO, counted in `frame`
             },
             gps: None,
         }
     }
 
-    /// ImpulseRC Apex 5" race quad — flagship 5" build (~680g AUW).
+    /// ImpulseRC Apex 5" — 5" freestyle, ~542 g all-up.
     ///
-    /// Sources: ImpulseRC specs (frame 115g), Joshua Bardwell flight reviews,
-    /// EMAX ECO II 2306 dyno data (hover ~18A on 4S 1300mAh), community builds.
+    /// Sources: frame 115 g and ESC 45/55 A from retailer listings (ImpulseRC
+    /// ceased trading in 2026 and publishes nothing); 378 g dry / 542 g all-up
+    /// from a documented build of this exact frame with a 4S 1300 pack
+    /// (rotorbuilds.com/build/26613).
+    ///
+    /// The previous record computed 440 g all-up while its own doc comment
+    /// claimed 680 g. 440 g allocated nothing to camera, VTX, antennas,
+    /// receiver or wiring — 93 g short of the measured dry weight.
     pub fn impulse_apex_5() -> Self {
         Self {
             frame: FrameSpec {
-                weight_g: 115.0,
+                // 378 g measured dry, less motors (132), props (18),
+                // ESC (13.6) and FC (8). The frame kit alone is 115 g; the
+                // remaining ~91 g is the FPV gear the model has no field for.
+                weight_g: 206.4,
                 wheelbase_mm: 220.0,
                 width_mm: Some(180.0),
                 length_mm: Some(180.0),
@@ -832,7 +869,7 @@ impl BuildSpec {
                 material: Some(FrameMaterial::Carbon),
             },
             motors: MotorSpec {
-                kv: 1700.0, // 2306 1700KV
+                kv: 1700.0,
                 weight_g: 33.0,
                 stator_size: Some(StatorSize {
                     diameter_mm: 23.0,
@@ -848,7 +885,7 @@ impl BuildSpec {
                 max_cell_count: 6,
                 firmware: Some(EscFirmware::BlHeli32),
                 response_tau_ms: Some(3.0),
-                weight_g: Some(12.0), // 4-in-1
+                weight_g: Some(13.6), // Holybro Tekko32 F3 45A 4-in-1
             },
             propellers: PropellerSpec {
                 diameter_in: 5.0,
@@ -859,8 +896,8 @@ impl BuildSpec {
             battery: BatterySpec {
                 cell_count: 4,
                 capacity_mah: 1300.0,
-                c_rating: 75.0,
-                weight_g: 155.0,
+                c_rating: 75.0, // Printed
+                weight_g: 164.0,
                 internal_resistance_mohm: None,
             },
             flight_controller: FlightControllerSpec {
@@ -876,109 +913,135 @@ impl BuildSpec {
         }
     }
 
-    /// GEPRC MARK5 6" freestyle — 6" long-range freestyle (~850g AUW).
+    /// GEPRC MARK5 — 5" freestyle on 6S, ~611 g all-up.
     ///
-    /// Sources: GEPRC product page (frame 145g), Pyrodrone bench tests,
-    /// T-Motor Velox 2306 datasheet, community measurements (~20A hover on 6S).
-    pub fn geprc_mark5_6() -> Self {
+    /// **This is a five-inch quad.** The previous name and record said six.
+    /// GEPRC's MARK5 Series is ten products on the same 225 mm five-inch
+    /// airframe; the "6" in every listing title is 6S, the cell count. GEPRC's
+    /// actual six-inch freestyle quads are the Vapor-X6 and Vapor-D6.
+    ///
+    /// Sources: GEPRC MARK5 Analog 6S TBS (385.0 g dry, 225 mm), SPEEDX2
+    /// 2107.5 (1960KV on 6S, 29.5 g, 21.0 x 7.5 mm stator), GEP-BL32 50A 4-in-1
+    /// (50 A / 55 A burst, 14 g), HQ Ethix S5 5x4x3 (3.7 g), and GEPRC's own
+    /// recommended pack, the Storm 6S 1400 mAh (226 g, printed 120C).
+    pub fn geprc_mark5() -> Self {
         Self {
             frame: FrameSpec {
-                weight_g: 145.0,
-                wheelbase_mm: 260.0,
-                width_mm: Some(210.0),
-                length_mm: Some(210.0),
+                // 385.0 g published dry, less motors (118), props (14.8),
+                // ESC (14) and FC (10).
+                weight_g: 228.2,
+                wheelbase_mm: 225.0,
+                width_mm: Some(185.0),
+                length_mm: Some(185.0),
                 height_mm: Some(40.0),
                 material: Some(FrameMaterial::Carbon),
             },
             motors: MotorSpec {
-                kv: 1500.0, // 2306 1500KV for 6S
-                weight_g: 35.0,
+                kv: 1960.0, // SPEEDX2 2107.5, 6S winding
+                weight_g: 29.5,
                 stator_size: Some(StatorSize {
-                    diameter_mm: 23.0,
-                    height_mm: 6.0,
+                    diameter_mm: 21.0,
+                    height_mm: 7.5,
                 }),
                 no_load_amps: Some(0.6),
-                resistance_ohm: Some(0.055),
+                resistance_ohm: None,
             },
             escs: EscSpec {
-                continuous_amps: 55.0,
-                burst_amps: Some(70.0),
-                min_cell_count: 4,
+                continuous_amps: 50.0,
+                burst_amps: Some(55.0), // "55A (5 second)"
+                min_cell_count: 2,
                 max_cell_count: 6,
                 firmware: Some(EscFirmware::BlHeli32),
                 response_tau_ms: Some(3.0),
-                weight_g: Some(15.0),
+                weight_g: Some(14.0),
             },
             propellers: PropellerSpec {
-                diameter_in: 6.0,
-                pitch_in: 3.0,
+                diameter_in: 5.0,
+                pitch_in: 4.0,
                 blade_count: 3,
-                weight_g: Some(7.0),
+                weight_g: Some(3.7),
             },
             battery: BatterySpec {
                 cell_count: 6,
-                capacity_mah: 1100.0,
-                c_rating: 80.0,
-                weight_g: 180.0,
+                capacity_mah: 1400.0,
+                c_rating: 120.0, // Printed on the Storm pack
+                weight_g: 226.0,
                 internal_resistance_mohm: None,
             },
             flight_controller: FlightControllerSpec {
-                mcu: Some("H7".into()),
+                mcu: Some("F7".into()),
                 imu_chip: Some(ImuChip::Icm42688p),
                 mag_chip: None,
-                baro_chip: Some(BaroChip::Dps310),
+                baro_chip: Some(BaroChip::Bmp280),
                 loop_rate_hz: 8000,
-                gyro_filter_hz: 300,
+                gyro_filter_hz: 200,
                 weight_g: 10.0,
             },
             gps: None,
         }
     }
 
-    /// iFlight Chimera 7" long-range — 7" GPS cruiser (~1200g AUW).
+    /// iFlight Chimera7 Pro V2 — 7.5" long-range on 6S Li-ion, ~1545 g all-up.
     ///
-    /// Sources: iFlight product page (frame 200g), iFlight XING2 2806.5 specs,
-    /// RcGroups builds (~8-10A hover on 6S 4000mAh), measured ~20 min hover time.
+    /// Sources: iFlight Chimera7 Pro V2 6S Analog (705 g dry, 327 mm, deadcat
+    /// geometry), XING2 2809 1250KV (60.7 g), BLITZ E55 4-in-1 (55 A constant /
+    /// 65 A burst, 15.3 g), Fullsend 6S2P 8000 mAh Li-ion (840 g, EVE
+    /// INR21700-40PL).
+    ///
+    /// **The pack is Li-ion, and its C-rating is the important correction.**
+    /// The record said 50C; the current revision is printed 17.5C, and the
+    /// history on iFlight's own page runs 10C -> 12.5C -> 17.5C as the cells
+    /// changed. Current limiting makes that ceiling load-bearing: 8 Ah at 17.5C
+    /// shared four ways is 35 A per motor, well under the ESC's 65 A, so the
+    /// pack is what binds. Recording a Li-ion pack at LiPo C-ratings hands the
+    /// build a current ceiling it does not have.
+    ///
+    /// The propeller pitch is genuinely ambiguous: iFlight ship HQ 7.5x3.7x3
+    /// and 7.5x3x3 interchangeably ("will be shipped randomly", 2025-02-13).
+    /// 3.7 is taken here; treat any pitch-sensitive result from this build as
+    /// carrying that uncertainty.
     pub fn iflight_chimera_7() -> Self {
         Self {
             frame: FrameSpec {
-                weight_g: 200.0,
-                wheelbase_mm: 295.0,
-                width_mm: Some(240.0),
-                length_mm: Some(260.0),
-                height_mm: Some(50.0),
+                // 705 g published dry, less motors (242.8), props (32),
+                // ESC (15.3), FC (12) and GPS (23).
+                weight_g: 379.9,
+                wheelbase_mm: 327.0,
+                width_mm: Some(270.0),
+                length_mm: Some(199.0),
+                height_mm: Some(34.0),
                 material: Some(FrameMaterial::Carbon),
             },
             motors: MotorSpec {
-                kv: 1300.0, // 2806.5 1300KV
-                weight_g: 52.0,
+                kv: 1250.0, // XING2 2809
+                weight_g: 60.7,
                 stator_size: Some(StatorSize {
                     diameter_mm: 28.0,
-                    height_mm: 6.5,
+                    height_mm: 9.0,
                 }),
-                no_load_amps: Some(0.7),
-                resistance_ohm: Some(0.045),
+                no_load_amps: Some(0.8),
+                resistance_ohm: Some(0.06546), // 65.46 mOhm interphase
             },
             escs: EscSpec {
-                continuous_amps: 60.0,
-                burst_amps: Some(80.0),
-                min_cell_count: 4,
+                continuous_amps: 55.0,
+                burst_amps: Some(65.0),
+                min_cell_count: 2,
                 max_cell_count: 6,
                 firmware: Some(EscFirmware::BlHeli32),
-                response_tau_ms: Some(3.5),
-                weight_g: Some(20.0),
+                response_tau_ms: Some(3.0),
+                weight_g: Some(15.3),
             },
             propellers: PropellerSpec {
-                diameter_in: 7.0,
-                pitch_in: 3.5,
-                blade_count: 2,
-                weight_g: Some(10.0),
+                diameter_in: 7.5,
+                pitch_in: 3.7,
+                blade_count: 3,
+                weight_g: Some(8.0),
             },
             battery: BatterySpec {
                 cell_count: 6,
-                capacity_mah: 4000.0,
-                c_rating: 50.0,
-                weight_g: 550.0,
+                capacity_mah: 8000.0,
+                c_rating: 17.5, // Li-ion, printed
+                weight_g: 840.0,
                 internal_resistance_mohm: None,
             },
             flight_controller: FlightControllerSpec {
@@ -994,7 +1057,7 @@ impl BuildSpec {
                 chipset: GpsChipset::UbloxM9N,
                 update_rate_hz: 10.0,
                 has_compass: true,
-                weight_g: 25.0,
+                weight_g: 23.0,
             }),
         }
     }

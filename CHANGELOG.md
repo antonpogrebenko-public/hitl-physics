@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.13.0 — 2026-08-29
+
+### Changed
+
+- **BREAKING: `geprc_mark5_6` is renamed `geprc_mark5`.** There is no six-inch
+  GEPRC MARK5. All ten products in GEPRC's MARK5 Series are the same 225 mm
+  five-inch airframe; the "6" in every listing title is 6S, the cell count.
+
+- **All four reference builds corrected against manufacturer sources.** Every
+  one was materially wrong, and two described a different aircraft than their
+  name claimed. Reference builds are what every other test is measured against,
+  so these errors propagated silently.
+
+  | build | was | is | worst error |
+  |---|---|---|---|
+  | `tinyhawk_3` | 2S, 12000KV, 3" tri-blade, 75 g | 1S, 15000KV, 40 mm four-blade, 44.5 g | prop diameter: `kt` scales with D⁴, so 3.0" against a real 1.57" is a factor of 13.3 |
+  | `impulse_apex_5` | 440 g all-up | 542 g | nothing allocated to camera, VTX, receiver or wiring — 93 g short of a measured build |
+  | `geprc_mark5` | "6-inch", 1500KV, 518 g | 5-inch, 1960KV, 611 g | wrong aircraft class |
+  | `iflight_chimera_7` | 7" two-blade, 1055 g, pack at 50C | 7.5" three-blade, 1545 g, Li-ion at 17.5C | the pack is Li-ion; 50C handed it a current ceiling it does not have |
+
+  Resulting thrust-to-weight: 2.70, 6.55, 11.78, 6.19 — every one plausible,
+  against 8.03, 8.07, 21.36 and 14.56 before this change and the two before it.
+  Figures of merit are 0.29, 0.67, 0.59, 0.67, all at or under the 0.68 that is
+  the best measured on real hardware.
+
+- `frame.weight_g` is now documented as a CATCH-ALL. Published dry weights are
+  whole-aircraft — camera, VTX, antennas, receiver, wiring — and `BuildSpec` has
+  no field for any of it. Putting the remainder in `frame` is what makes each
+  build's dry sum match its published figure.
+
+### Added
+
+- Table rows for the EMAX Avia TH 40 mm four-blade and the HQ 7.5x3.7x3, so
+  both corrected reference builds resolve by exact match rather than by
+  nearest-neighbour rescaling.
+
 ## 0.12.0 — 2026-08-29
 
 ### Changed

@@ -61,6 +61,8 @@
 # the single 0.88-of-no-load constant this file previously described.
 #
 diameter_in,pitch_in,blade_count,manufacturer,model,ct_static,cq_static,source
+7.5,3.7,3,HQProp,7.5x3.7x3,4.471700e-3,2.615944e-4,hqprop.com/7-5x3-7x3
+1.57,1.22,4,EMAX,Avia TH 40mm,4.586598e-3,1.119627e-3,nextfpv.com/products/emax-tinyhawk-iii-avia-th-propeller-set-of-4
 2.5,1.6,3,Gemfan,1636,3.860600e-3,5.559264e-4,gemfanhobby.com/products/1636-3blade
 2.5,1.6,4,Gemfan,1636-4,4.721847e-3,7.507737e-4,gemfanhobby.com/products/1636-4blade
 2.5,2.5,2,HQProp,2.5x2.5x2,3.103822e-3,4.422946e-4,hqprop.com/products/2-5x2-5-2blade

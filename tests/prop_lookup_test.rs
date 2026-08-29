@@ -124,7 +124,7 @@ fn reference_build_props_resolve_via_table() {
     let builds: [(&str, BuildSpec); 4] = [
         ("Tinyhawk 3", BuildSpec::tinyhawk_3()),
         ("Apex 5", BuildSpec::impulse_apex_5()),
-        ("MARK5 6", BuildSpec::geprc_mark5_6()),
+        ("MARK5", BuildSpec::geprc_mark5()),
         ("Chimera 7", BuildSpec::iflight_chimera_7()),
     ];
     for (name, build) in builds {
