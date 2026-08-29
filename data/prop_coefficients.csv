@@ -9,80 +9,97 @@
 #   CT_aero = ct_static * (2*pi)^2 ~ 39.5x larger
 # (e.g. 5x4.5x3 ct_static 2.745e-3 -> CT_aero 0.108, a typical FPV value.)
 #
-# BENCH CALIBRATION (2026-05-30): ct_static is now PHYSICAL — a real static
-# thrust coefficient (CT_aero ~0.09-0.12 across all FPV prop sizes), not the
-# legacy per-size-anchored formula values (which over-produced thrust ~4x and
-# had a non-physical diameter dependence). Basis:
-#   ct_static = 0.00283 * (0.7 + 0.06*pitch) * (0.85 + 0.05*blades)
-#   cq_static = ct_static * 0.348*(0.010+0.002*pitch+0.002*blades) / D_meters
-# The absolute level is anchored to the iFlight XING2 2207 bench report
-# (1576 g pull and 40.35 A at 16 V / full throttle, 5" prop); combined with
-# the torque-balance loaded-RPM model it reproduces bench max-thrust within ~2%.
-# Thrust scales with D^4 via kt (physics), so ct stays ~size-independent.
+# BENCH CALIBRATION (2026-08-29): every value below is DERIVED, not measured.
+# Each row is this crate's closed-form basis evaluated at that row's
+# (diameter, pitch, blade_count):
+#   ct_static = 0.00485 * (0.7 + 0.06*pitch) * (0.85 + 0.05*blades)
+#   cq_static = ct_static * 0.47625*(0.010+0.002*pitch+0.002*blades) / D_meters
+# Regenerate with:  cargo run --example regenerate_prop_table > this file
 #
-# Relative ratios across (pitch, blade_count) follow real bench data:
+# The absolute level is anchored to LAB bench data for a six-inch three-blade,
+# where two unrelated sources agree:
+#   - Cobra CM-2213/12 on an HQ 6x4.5x3, 11.1 V, full throttle: 1032.4 g at
+#     17,253 rpm on 273.66 W -> CT_aero 0.1853, CQ_aero 0.01389.
+#   - APC's performance file for the 6x4.2E-3 three-blade: static CT 0.1850.
+# Pitch-corrected to 6x4.0 that is CT_aero ~0.180, which K_CT reproduces.
+#
+# It replaces a 2026-05-30 calibration anchored to an iFlight XING2 2207
+# manufacturer figure, which gave CT_aero 0.105 -- 1.76x low -- and a CQ 2.41x
+# low. Those two errors pointed opposite ways: too little drag torque let the
+# torque balance settle at 98% of no-load, and the excess shaft speed then made
+# up most of the missing thrust, so the thrust figure looked plausible while
+# both halves were wrong. The giveaway was an implied figure of merit above 0.8
+# where no real propeller exceeds ~0.68.
+#
+# Because they compensate, ct and cq must be changed TOGETHER. Re-anchoring one
+# alone produces a model that is right about propellers and wrong about motors,
+# or the reverse. `PhysicsConfig::momentum_theory_thrust_ceiling_n` exists to
+# catch that combination.
+#
+# The manufacturer and source columns record which product page fixed each row's
+# (D, P, B) geometry. They are NOT the provenance of ct_static / cq_static: no
+# row is a copy of a published coefficient. Treat every numeric value here as
+# model output, not measurement.
+#
+# Relative ratios across (pitch, blade_count):
 #   - Per inch of pitch: ~6-8% more thrust at same RPM (0.7 + 0.06*pitch).
-#   - Blade count: ~15% per-blade spread (2 vs 3 blade), matching APC/HQProp dyno.
+#   - Blade count: 0.85 + 0.05*blades. Task 5.6 of the change
+#     `fix-hitl-sim-flight-regression` still owes this a check against measured
+#     two- versus three-blade data; UIUC's blade-count controls suggest the real
+#     spread is wider than this linear model gives.
 #
-# ACCURACY NOTE: max-thrust is bench-anchored for 5"-class motors (the XING2
-# 2207 anchor). The loaded-RPM factor is a single constant (0.88 of no-load);
-# this is accurate for well-matched mid-KV motors but over-credits tiny high-KV
-# motors (a 0802 12000KV bogs to ~0.5 of no-load), so micro builds read low on
-# hover throttle. A per-motor torque-balance loaded-RPM model (using motor R/Kt)
-# is the follow-up that removes this residual across the full KV range.
-#
-# Source column lists the manufacturer page consulted for the (D, P, B) ratio
-# relationships. Numerical values are derived from the bench-anchored basis
-# above, not direct copies of published CT(n) numbers.
+# ACCURACY NOTE: the loaded-RPM model is a per-motor torque balance capped by
+# available current (ESC burst rating, or pack C-rating shared four ways), not
+# the single 0.88-of-no-load constant this file previously described.
 #
 diameter_in,pitch_in,blade_count,manufacturer,model,ct_static,cq_static,source
-2.5,1.6,3,Gemfan,1636,2.252680e-03,2.370316e-04,gemfanhobby.com/products/1636-3blade
-2.5,1.6,4,Gemfan,1636-4,2.365314e-03,2.748085e-04,gemfanhobby.com/products/1636-4blade
-2.5,2.5,2,HQProp,2.5x2.5x2,2.285225e-03,2.379513e-04,hqprop.com/products/2-5x2-5-2blade
-3.0,1.6,3,Gemfan,3016,2.252680e-03,1.975263e-04,gemfanhobby.com/products/3016-3blade
-3.0,2.0,3,EMAX,Avan-2-3,2.320600e-03,2.119603e-04,emaxmodel.com/avan-mini-2
-3.0,2.5,3,HQProp,T3x2.5x3,2.405500e-03,2.307007e-04,hqprop.com/t3x2-5x3
-3.0,3.0,3,HQProp,T3x3x3,2.490400e-03,2.502166e-04,hqprop.com/t3x3x3
-3.0,3.0,2,HQProp,T3x3x2,2.365880e-03,2.160961e-04,hqprop.com/t3x3x2
-3.0,4.0,3,DALProp,Cyclone-3040C,2.660200e-03,2.915747e-04,daldrones.com/cyclone-3040
-3.5,2.0,3,Gemfan,3520-3,2.320600e-03,1.816803e-04,gemfanhobby.com/products/3520-3blade
-3.5,3.0,3,HQProp,T3.5x3x3,2.490400e-03,2.144713e-04,hqprop.com/t3-5x3x3
-4.0,2.5,3,HQProp,T4x2.5x3,2.405500e-03,1.730255e-04,hqprop.com/t4x2-5x3
-4.0,4.0,3,HQProp,T4x4x3,2.660200e-03,2.186810e-04,hqprop.com/t4x4x3
-4.0,4.0,2,HQProp,T4x4x2,2.527190e-03,1.904347e-04,hqprop.com/t4x4x2
-4.0,4.5,3,DALProp,Cyclone-4045C,2.745100e-03,2.350627e-04,daldrones.com/cyclone-4045
-4.0,5.0,3,Gemfan,4050-3,2.830000e-03,2.520260e-04,gemfanhobby.com/products/4050-3blade
-5.0,3.0,3,Gemfan,5030-3,2.490400e-03,1.501299e-04,gemfanhobby.com/products/5030-3blade
-5.0,3.0,2,HQProp,T5x3x2,2.365880e-03,1.296577e-04,hqprop.com/t5x3x2
-5.0,4.0,3,HQProp,T5x4x3,2.660200e-03,1.749448e-04,hqprop.com/t5x4x3
-5.0,4.0,2,Gemfan,5040-2,2.527190e-03,1.523478e-04,gemfanhobby.com/products/5040-2blade
-5.0,4.3,3,HQProp,T5x4.3x3,2.711140e-03,1.827522e-04,hqprop.com/t5x4-3x3
-5.0,4.5,3,HQProp,T5x4.5x3,2.745100e-03,1.880502e-04,hqprop.com/t5x4-5x3
-5.0,4.5,2,HQProp,T5x4.5x2,2.607845e-03,1.643558e-04,hqprop.com/t5x4-5x2
-5.0,4.5,4,HQProp,T5x4.5x4,2.882355e-03,2.132489e-04,hqprop.com/t5x4-5x4
-5.0,5.0,3,HQProp,T5x5x3,2.830000e-03,2.016208e-04,hqprop.com/t5x5x3
-5.0,5.1,3,Azure,5.1x5.1x3,2.846980e-03,2.043907e-04,azurepowergroup.com/5-1x5-1
-5.0,6.0,3,DALProp,Cyclone-5060,2.999800e-03,2.301579e-04,daldrones.com/cyclone-5060
-5.0,4.5,5,Gemfan,5045-5,3.019610e-03,2.399520e-04,gemfanhobby.com/products/5045-5blade
-6.0,3.0,3,Gemfan,6030-3,2.490400e-03,1.251083e-04,gemfanhobby.com/products/6030-3blade
-6.0,3.0,2,Gemfan,6030-2,2.365880e-03,1.080481e-04,gemfanhobby.com/products/6030-2blade
-6.0,4.0,3,HQProp,T6x4x3,2.660200e-03,1.457873e-04,hqprop.com/t6x4x3
-6.0,4.0,2,HQProp,T6x4x2,2.527190e-03,1.269565e-04,hqprop.com/t6x4x2
-6.0,4.5,3,DALProp,6045BN,2.745100e-03,1.567085e-04,daldrones.com/6045bn
-6.0,5.5,3,HQProp,T6x5.5x3,2.914900e-03,1.797139e-04,hqprop.com/t6x5-5x3
-7.0,2.5,3,HQProp,T7x2.5x3,2.405500e-03,9.887173e-05,hqprop.com/t7x2-5x3
-7.0,3.5,2,HQProp,T7x3.5x2,2.446535e-03,1.005584e-04,hqprop.com/t7x3-5x2
-7.0,3.5,3,HQProp,T7x3.5x3,2.575300e-03,1.159320e-04,hqprop.com/t7x3-5x3
-7.0,4.0,2,Gemfan,7040-2,2.527190e-03,1.088198e-04,gemfanhobby.com/products/7040-2blade
-7.0,4.0,3,Gemfan,7040-3,2.660200e-03,1.249606e-04,gemfanhobby.com/products/7040-3blade
-7.0,5.0,2,Master Airscrew,MAS-7x5x2,2.688500e-03,1.262899e-04,masterairscrew.com/7x5
-8.0,4.0,2,Gemfan,8040-2,2.527190e-03,9.521736e-05,gemfanhobby.com/products/8040-2blade
-8.0,4.5,3,T-Motor,T8045-3,2.745100e-03,1.175313e-04,tmotor.com/t8045
-8.0,5.0,2,Master Airscrew,MAS-8x5x2,2.688500e-03,1.105037e-04,masterairscrew.com/8x5
-8.0,5.0,3,Gemfan,8050-3,2.830000e-03,1.260130e-04,gemfanhobby.com/products/8050-3blade
-8.0,6.0,2,APC,8x6 SF,2.849810e-03,1.268951e-04,apcprop.com/8x6sf
-10.0,4.5,2,T-Motor,T1045-2,2.607845e-03,8.217792e-05,tmotor.com/t1045
-10.0,5.0,2,APC,10x5 SF,2.688500e-03,8.840296e-05,apcprop.com/10x5sf
-10.0,5.0,3,APC,10x5 SF-3,2.830000e-03,1.008104e-04,apcprop.com/10x5sf3
-10.0,5.5,2,T-Motor,T1055-2,2.769155e-03,9.484901e-05,tmotor.com/t1055
-10.0,6.0,2,APC,10x6 SF,2.849810e-03,1.015161e-04,apcprop.com/10x6sf
+2.5,1.6,3,Gemfan,1636,3.860600e-3,5.559264e-4,gemfanhobby.com/products/1636-3blade
+2.5,1.6,4,Gemfan,1636-4,4.053630e-3,6.445272e-4,gemfanhobby.com/products/1636-4blade
+2.5,2.5,2,HQProp,2.5x2.5x2,3.916375e-3,5.580834e-4,hqprop.com/products/2-5x2-5-2blade
+3.0,1.6,3,Gemfan,3016,3.860600e-3,4.632720e-4,gemfanhobby.com/products/3016-3blade
+3.0,2.0,3,EMAX,Avan-2-3,3.977000e-3,4.971250e-4,emaxmodel.com/avan-mini-2
+3.0,2.5,3,HQProp,T3x2.5x3,4.122500e-3,5.410781e-4,hqprop.com/t3x2-5x3
+3.0,3.0,3,HQProp,T3x3x3,4.268000e-3,5.868500e-4,hqprop.com/t3x3x3
+3.0,3.0,2,HQProp,T3x3x2,4.054600e-3,5.068250e-4,hqprop.com/t3x3x2
+3.0,4.0,3,DALProp,Cyclone-3040C,4.559000e-3,6.838500e-4,daldrones.com/cyclone-3040
+3.5,2.0,3,Gemfan,3520-3,3.977000e-3,4.261071e-4,gemfanhobby.com/products/3520-3blade
+3.5,3.0,3,HQProp,T3.5x3x3,4.268000e-3,5.030143e-4,hqprop.com/t3-5x3x3
+4.0,2.5,3,HQProp,T4x2.5x3,4.122500e-3,4.058086e-4,hqprop.com/t4x2-5x3
+4.0,4.0,3,HQProp,T4x4x3,4.559000e-3,5.128875e-4,hqprop.com/t4x4x3
+4.0,4.0,2,HQProp,T4x4x2,4.331050e-3,4.466395e-4,hqprop.com/t4x4x2
+4.0,4.5,3,DALProp,Cyclone-4045C,4.704500e-3,5.513086e-4,daldrones.com/cyclone-4045
+4.0,5.0,3,Gemfan,4050-3,4.850000e-3,5.910938e-4,gemfanhobby.com/products/4050-3blade
+5.0,3.0,3,Gemfan,5030-3,4.268000e-3,3.521100e-4,gemfanhobby.com/products/5030-3blade
+5.0,3.0,2,HQProp,T5x3x2,4.054600e-3,3.040950e-4,hqprop.com/t5x3x2
+5.0,4.0,3,HQProp,T5x4x3,4.559000e-3,4.103100e-4,hqprop.com/t5x4x3
+5.0,4.0,2,Gemfan,5040-2,4.331050e-3,3.573116e-4,gemfanhobby.com/products/5040-2blade
+5.0,4.3,3,HQProp,T5x4.3x3,4.646300e-3,4.286212e-4,hqprop.com/t5x4-3x3
+5.0,4.5,3,HQProp,T5x4.5x3,4.704500e-3,4.410469e-4,hqprop.com/t5x4-5x3
+5.0,4.5,2,HQProp,T5x4.5x2,4.469275e-3,3.854750e-4,hqprop.com/t5x4-5x2
+5.0,4.5,4,HQProp,T5x4.5x4,4.939725e-3,5.001472e-4,hqprop.com/t5x4-5x4
+5.0,5.0,3,HQProp,T5x5x3,4.850000e-3,4.728750e-4,hqprop.com/t5x5x3
+5.0,5.1,3,Azure,5.1x5.1x3,4.879100e-3,4.793716e-4,azurepowergroup.com/5-1x5-1
+5.0,6.0,3,DALProp,Cyclone-5060,5.141000e-3,5.398050e-4,daldrones.com/cyclone-5060
+5.0,4.5,5,Gemfan,5045-5,5.174950e-3,5.627758e-4,gemfanhobby.com/products/5045-5blade
+6.0,3.0,3,Gemfan,6030-3,4.268000e-3,2.934250e-4,gemfanhobby.com/products/6030-3blade
+6.0,3.0,2,Gemfan,6030-2,4.054600e-3,2.534125e-4,gemfanhobby.com/products/6030-2blade
+6.0,4.0,3,HQProp,T6x4x3,4.559000e-3,3.419250e-4,hqprop.com/t6x4x3
+6.0,4.0,2,HQProp,T6x4x2,4.331050e-3,2.977597e-4,hqprop.com/t6x4x2
+6.0,4.5,3,DALProp,6045BN,4.704500e-3,3.675391e-4,daldrones.com/6045bn
+6.0,5.5,3,HQProp,T6x5.5x3,4.995500e-3,4.214953e-4,hqprop.com/t6x5-5x3
+7.0,2.5,3,HQProp,T7x2.5x3,4.122500e-3,2.318906e-4,hqprop.com/t7x2-5x3
+7.0,3.5,2,HQProp,T7x3.5x2,4.192825e-3,2.358464e-4,hqprop.com/t7x3-5x2
+7.0,3.5,3,HQProp,T7x3.5x3,4.413500e-3,2.719031e-4,hqprop.com/t7x3-5x3
+7.0,4.0,2,Gemfan,7040-2,4.331050e-3,2.552226e-4,gemfanhobby.com/products/7040-2blade
+7.0,4.0,3,Gemfan,7040-3,4.559000e-3,2.930786e-4,gemfanhobby.com/products/7040-3blade
+7.0,5.0,2,Master Airscrew,MAS-7x5x2,4.607500e-3,2.961964e-4,masterairscrew.com/7x5
+8.0,4.0,2,Gemfan,8040-2,4.331050e-3,2.233198e-4,gemfanhobby.com/products/8040-2blade
+8.0,4.5,3,T-Motor,T8045-3,4.704500e-3,2.756543e-4,tmotor.com/t8045
+8.0,5.0,2,Master Airscrew,MAS-8x5x2,4.607500e-3,2.591719e-4,masterairscrew.com/8x5
+8.0,5.0,3,Gemfan,8050-3,4.850000e-3,2.955469e-4,gemfanhobby.com/products/8050-3blade
+8.0,6.0,2,APC,8x6 SF,4.883950e-3,2.976157e-4,apcprop.com/8x6sf
+10.0,4.5,2,T-Motor,T1045-2,4.469275e-3,1.927375e-4,tmotor.com/t1045
+10.0,5.0,2,APC,10x5 SF,4.607500e-3,2.073375e-4,apcprop.com/10x5sf
+10.0,5.0,3,APC,10x5 SF-3,4.850000e-3,2.364375e-4,apcprop.com/10x5sf3
+10.0,5.5,2,T-Motor,T1055-2,4.745725e-3,2.224559e-4,tmotor.com/t1055
+10.0,6.0,2,APC,10x6 SF,4.883950e-3,2.380926e-4,apcprop.com/10x6sf

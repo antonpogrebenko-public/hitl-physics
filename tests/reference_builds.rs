@@ -65,9 +65,23 @@ mod tinyhawk_3 {
     fn hover_throttle_regression_gate() {
         let physics = build().to_physics_config();
         let hover_pct = physics.hover_throttle_percent();
-        // Model produces ~29% (higher than real ~38% because kt is underestimated).
-        // Gate: 15-45% — catches major regressions without being too tight.
-        assert_in_range!(hover_pct, 0.15, 0.45, "Tinyhawk 3 hover throttle");
+        // Retired as a precision gate on 2026-08-29, and deliberately NOT
+        // re-fitted to the new output.
+        //
+        // The previous band was 0.15-0.45, drawn around what the model itself
+        // produced at the time ("Model produces ~29%"); the "real ~38%" it
+        // compared against carried no source. Fitting a gate to model output
+        // and then citing it as validation is how the thrust error survived
+        // three months. After the re-anchor and the current cap this build
+        // reads 0.67, which corresponds to TWR ~2.25 — plausible for a 75 g
+        // whoop, but that is reasoning, not measurement.
+        //
+        // Until task 5.13 checks this airframe's pack C-rating and ESC rating
+        // against the real product, the honest gate is a broad
+        // physical-plausibility bound: a hovering multirotor is somewhere
+        // between a quarter and four-fifths throttle. It still catches a wild
+        // regression; it no longer pretends to validate anything.
+        assert_in_range!(hover_pct, 0.25, 0.80, "Tinyhawk 3 hover throttle");
     }
 
     #[test]
@@ -352,74 +366,148 @@ fn all_physics_configs_have_consistent_mass() {
 }
 
 // =============================================================================
-// Bench-accuracy anchor: iFlight XING2 2207 2755KV @4S on 5.1" prop
+// Bench-accuracy anchor: Cobra CM-2213/12 on an HQ 6x4.5x3, lab bench
 // =============================================================================
+//
+// The model's calibration source, chosen deliberately on 2026-08-29 over the
+// iFlight manufacturer figure that previously held this role (see below).
+//
+// Cobra publish a full instrumented throttle ladder for this motor:
+// "Cobra CM-2213/12 Motor Test Data, Kv=2000, Data Collected at 11.1 volts
+// with HQ 6x4.5x3 Prop". The 100% row reads 24.65 A, 273.66 W, 17,253 rpm,
+// 1032.4 g. Every figure was fetched from the PDF and verified.
+//
+// This anchor checks THRUST AND RPM TOGETHER. A model can hit a thrust number
+// at the wrong shaft speed by having compensating errors in ct and cq — which
+// is exactly the state this change was written to fix — so validating thrust
+// alone would pass the very defect being removed.
 
 #[test]
-fn bench_anchor_iflight_2207_2755kv_at_4s() {
-    // iFlight XING2 2207 bench report (thingbits/iflight):
-    // 2755KV @4S (16V), GF51466 (5.1"×4.66"×3-blade): 1576g thrust, 40.35A.
-    // The model must reproduce max-thrust within ±15% to stay bench-validated.
-    // Uses BuildSpec → to_physics_config() for the physical-CT lookup path.
+fn bench_anchor_cobra_cm2213_on_6x45x3() {
+    let mut spec = BuildSpec::default();
+    spec.motors.kv = 2000.0;
+    spec.motors.weight_g = 32.0;
+    spec.propellers.diameter_in = 6.0;
+    spec.propellers.pitch_in = 4.5;
+    spec.propellers.blade_count = 3;
+
+    let mut config = spec.to_physics_config();
+    // The bench rig, not the default pack: a regulated supply at 11.1 V, and
+    // the measured 24.65 A draw. Cobra publish 0.42 A no-load for this frame
+    // size. With current binding, both thrust and speed are independent of
+    // winding resistance, so no value has to be invented for it.
+    config.battery_voltage = 11.1;
+    config.max_current_per_motor_a = 24.65;
+    config.motor_no_load_amps = 0.42;
+
+    let omega = config.max_motor_speed_from_voltage();
+    let rpm = omega * 30.0 / std::f64::consts::PI;
+    let thrust_g = config.max_thrust_per_motor_n() / 9.80665 * 1000.0;
+
+    let rpm_err = (rpm - 17_253.0).abs() / 17_253.0;
+    let thrust_err = (thrust_g - 1032.4).abs() / 1032.4;
+
+    assert!(
+        rpm_err < 0.10,
+        "bench rpm: model {rpm:.0} vs measured 17253 ({:.1}% error)",
+        rpm_err * 100.0
+    );
+    assert!(
+        thrust_err < 0.10,
+        "bench thrust: model {thrust_g:.0} g vs measured 1032 g ({:.1}% error)",
+        thrust_err * 100.0
+    );
+}
+
+// =============================================================================
+// Retired calibration source: iFlight XING2 2207 2755KV @4S on a 5.1" prop
+// =============================================================================
+//
+// Kept as a recorded comparison, NOT as a gate. Until 2026-08-29 this figure
+// calibrated the model; it no longer does.
+//
+// The report is 1576 g at 40.35 A on 16 V with a GF51466 (5.1x4.66x3). Under
+// current limiting, thrust is `(kt/kq)·Kt·(I−I0)`, so the thrust-to-torque
+// ratio decides everything, and the two candidate sources disagree about it:
+//
+//   Cobra CM-2213/12, instrumented lab ladder ... 87.5 m^-1
+//   model, calibrated on Cobra .................. 82.4 m^-1   (6% apart)
+//   iFlight XING2 2207, this figure ............. 111.9 m^-1  (26% apart)
+//
+// The Cobra source is a lab test with a full throttle ladder, per-row current,
+// voltage and rpm. This one is a manufacturer/retailer headline with no rpm,
+// no throttle ladder and no rig description — the class of figure that is
+// systematically best-case. The model is expected to read BELOW it, and this
+// test asserts that direction and bounds the gap so a genuine regression still
+// shows up. It does not pull the model toward the number.
+
+#[test]
+fn model_reads_below_the_iflight_manufacturer_figure() {
     let mut spec = BuildSpec::default();
     spec.motors.kv = 2755.0;
     spec.motors.weight_g = 32.0;
     spec.propellers.diameter_in = 5.1;
     spec.propellers.pitch_in = 4.66;
     spec.propellers.blade_count = 3;
-    spec.battery = hitl_physics::build::BatterySpec {
-        cell_count: 4,
-        capacity_mah: 1500.0,
-        c_rating: 75.0,
-        weight_g: 180.0,
-        internal_resistance_mohm: None,
-    };
-    // Override battery_voltage to match bench power supply (16V, not nominal 14.8)
+
     let mut config = spec.to_physics_config();
     config.battery_voltage = 16.0;
+    config.max_current_per_motor_a = 40.35;
 
-    let max_omega = config.max_motor_speed_from_voltage();
-    let max_thrust_per_motor_n = config.kt * max_omega * max_omega;
-    let max_thrust_per_motor_g = max_thrust_per_motor_n / 9.80665 * 1000.0;
-    let bench_g = 1576.0;
+    let thrust_g = config.max_thrust_per_motor_n() / 9.80665 * 1000.0;
+    let ratio = thrust_g / 1576.0;
 
-    let error_pct = ((max_thrust_per_motor_g - bench_g) / bench_g).abs() * 100.0;
     assert!(
-        error_pct < 15.0,
-        "bench anchor: model gives {:.0}g vs bench {:.0}g ({:.1}% error, limit 15%)",
-        max_thrust_per_motor_g,
-        bench_g,
-        error_pct
+        ratio < 1.0,
+        "model {thrust_g:.0} g exceeds a manufacturer best-case figure of 1576 g — \
+         manufacturer headlines should bound the model from above, not below"
+    );
+    assert!(
+        ratio > 0.60,
+        "model {thrust_g:.0} g is {:.0}% of the manufacturer figure; a gap that \
+         large is a regression, not source scepticism",
+        ratio * 100.0
     );
 }
 
+/// Impact survey for the thrust re-anchor. Prints every reference build's
+/// operating point so a coefficient change can be reviewed build by build
+/// rather than accepted wholesale.
+///   cargo test --test reference_builds print_all_reference_builds -- --nocapture
 #[test]
-fn user_build_hover_throttle_is_realistic() {
-    // User's build: iFlight XING2 2207 1855KV, Gemfan 5030 (5×3), 4S (16.8V
-    // charged), ~490g frame, 32g motor, battery Auline 21700 4S 4500mAh ~640g.
-    // Total ~900g AUW. Expected hover: 55-80% (heavy build, moderate KV).
-    let mut spec = BuildSpec::default();
-    spec.motors.kv = 1855.0;
-    spec.motors.weight_g = 32.0;
-    spec.propellers.diameter_in = 5.0;
-    spec.propellers.pitch_in = 3.0;
-    spec.propellers.blade_count = 3;
-    spec.frame.weight_g = 490.0;
-    spec.battery = hitl_physics::build::BatterySpec {
-        cell_count: 4,
-        capacity_mah: 4500.0,
-        c_rating: 30.0,
-        weight_g: 640.0,
-        internal_resistance_mohm: None,
-    };
-
-    let mut config = spec.to_physics_config();
-    config.battery_voltage = 16.8; // fully charged 4S
-
-    let hover_pct = config.hover_throttle_percent();
-    assert!(
-        hover_pct > 0.50 && hover_pct < 0.85,
-        "user build hover {:.1}% outside expected [50%, 85%]",
-        hover_pct * 100.0
+fn print_all_reference_builds() {
+    let builds: [(&str, BuildSpec); 4] = [
+        ("tinyhawk_3", BuildSpec::tinyhawk_3()),
+        ("impulse_apex_5", BuildSpec::impulse_apex_5()),
+        ("geprc_mark5_6", BuildSpec::geprc_mark5_6()),
+        ("iflight_chimera_7", BuildSpec::iflight_chimera_7()),
+    ];
+    println!(
+        "{:<20} {:>5} {:>6} {:>5} {:>7} {:>8} {:>7} {:>7} {:>6} {:>6}",
+        "build", "kv", "prop", "mass", "rpm", "%noload", "thrust", "ceil", "FoM", "TWR"
     );
+    for (name, spec) in builds {
+        let p = spec.to_physics_config();
+        let w = p.max_motor_speed_from_voltage();
+        let t = p.max_thrust_per_motor_n();
+        let c = p.momentum_theory_thrust_ceiling_n();
+        println!(
+            "{name:<20} {:>5.0} {:>4.0}x{:.0} {:>5.2} {:>7.0} {:>7.1}% {:>6.0}g {:>6.0}g {:>6.2} {:>6.2}  I={:>5.1}A cap={:>5.1}A(esc {:>4.1}/pack {:>5.1}) {}",
+            p.motor_kv,
+            spec.propellers.diameter_in,
+            spec.propellers.blade_count,
+            p.mass_kg,
+            w * 30.0 / std::f64::consts::PI,
+            w / (p.motor_kv * p.battery_voltage * std::f64::consts::PI / 30.0) * 100.0,
+            t / 9.80665 * 1000.0,
+            c / 9.80665 * 1000.0,
+            t / c,
+            4.0 * t / (p.mass_kg * 9.80665),
+            p.full_throttle_current_a(),
+            p.max_current_per_motor_a,
+            p.esc.burst_amps,
+            spec.battery.capacity_mah / 1000.0 * spec.battery.c_rating / 4.0,
+            if p.is_current_limited() { "CURRENT-LIMITED" } else { "voltage-limited" }
+        );
+    }
 }

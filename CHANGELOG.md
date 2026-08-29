@@ -1,5 +1,84 @@
 # Changelog
 
+## 0.11.0 — 2026-08-29
+
+### Changed
+
+- **Thrust basis re-anchored to lab bench data.** `K_CT` 0.00283 -> 0.00485 and
+  `KQ_KT_SCALE` 0.348 -> 0.47625, giving a six-inch three-blade CT_aero 0.180 /
+  CQ_aero 0.0135. Two unrelated sources agree on the target: Cobra CM-2213/12 on
+  an HQ 6x4.5x3 (1032.4 g at 17,253 rpm on 273.66 W -> CT 0.1853) and APC's own
+  6x4.2E-3 performance file (static CT 0.1850). The previous values were 1.76x
+  and 2.41x low respectively.
+
+  The two errors pointed opposite ways, which is why the result looked
+  plausible: too little drag torque let the torque balance settle at 98% of
+  no-load, and the excess shaft speed made up most of the missing thrust. They
+  must be changed together.
+
+- **BREAKING: the full-throttle operating point is now capped by available
+  current.** `max_motor_speed_from_voltage()` returns
+  `min(voltage-limited, current-limited)`. Previously the torque balance had no
+  upper bound and a 2306 on a 6" tri-blade settled at 49.7 A per motor, 199 A
+  for the airframe, with nothing objecting. `EscConfig` had carried
+  `continuous_amps` and `burst_amps` since it was written and nothing read them.
+
+- **Calibration source changed from a manufacturer figure to a lab bench.** The
+  iFlight XING2 2207 anchor (1576 g at 40.35 A) is retired as a gate and kept
+  as a bounded comparison. Under current limiting thrust is
+  `(kt/kq)·Kt·(I−I0)`, so the thrust-to-torque ratio decides everything: Cobra's
+  instrumented ladder gives 87.5 m^-1, the model now gives 82.4, and the iFlight
+  figure implies 111.9.
+
+- `data/prop_coefficients.csv` regenerated, and its header now states plainly
+  that every value is model output rather than measurement. The manufacturer and
+  source columns record which product page fixed each row's geometry, not the
+  provenance of its coefficients.
+
+### Added
+
+- `PhysicsConfig::prop_diameter_m`, `disc_area_m2()`, `full_throttle_current_a()`,
+  `full_throttle_power_w()`, `momentum_theory_thrust_ceiling_n()`,
+  `max_thrust_per_motor_n()` and `is_current_limited()`. The momentum-theory
+  ceiling bounds thrust by the power the operating point actually implies, which
+  is what catches compensating ct/cq errors.
+- `PhysicsConfig::max_current_per_motor_a`, set from
+  `min(esc.burst_amps, pack_C_rating/4)`.
+- `prop_coefficients::derive_from_basis` and `examples/regenerate_prop_table`,
+  so the table is reproducible from the basis instead of hand-edited. Verified
+  to regenerate the committed file byte-for-byte.
+- `bench_anchor_cobra_cm2213_on_6x45x3`, which validates thrust AND rpm
+  together. Thrust alone would pass a model with compensating errors.
+
+### Note
+
+Reference-build figures moved substantially and several are still not
+trustworthy — their pack C-ratings and masses need auditing against the real
+products (tasks 5.13/5.14 of `fix-hitl-sim-flight-regression`). The
+`tinyhawk_3` hover gate was retired as a precision gate rather than re-fitted:
+its old band was drawn around the model's own output.
+
+## 0.10.3 — 2026-08-28
+
+### Added
+
+- Reference build for the reported flight regression (EMAX GT-II 2212C 1000KV,
+  Gemfan 6040 three-blade, 4S 10 Ah, 600 g frame). Pins today's
+  `mass_kg = 2.5445` and `twr = 0.6542` so the thrust basis cannot move without
+  a test failing, records the per-term mass breakdown, and asserts that an
+  unachievable hover throttle is produced.
+- `correcting_the_mass_alone_does_not_make_this_build_fly` — correcting the
+  battery (1400 g estimate to a real ~850 g) and the propellers (3 g default to
+  a real ~8 g) takes the build to 2014.5 g and TWR 0.8263, still below 1.0.
+  The mass defects are real and fixed; they are not what stopped it flying.
+
+### Note
+
+Whether 416 g per motor is correct for this pairing is still unmeasured. The
+resulting `CT_aero` of 0.105 sits inside the 0.09-0.12 band `prop_coefficients.rs`
+itself calls physical, so the pre-0.10.0 value may have been the wrong one. Do
+not move `K_CT` without a bench figure.
+
 ## 0.10.0 — 2026-05-30
 
 ### Changed

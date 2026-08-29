@@ -37,18 +37,18 @@ fn default_5x4_5x3_kt_intentionally_deflated_from_legacy() {
     let ratio = via_build.kt / legacy.kt;
     // Post-recalibration: physical-CT is ~0.25× the legacy inflated value.
     assert!(
-        ratio > 0.15 && ratio < 0.40,
-        "kt de-inflation ratio {:.3} outside [0.15, 0.40] (got {:.4e}, legacy {:.4e})",
+        ratio > 0.26 && ratio < 0.69,
+        "kt de-inflation ratio {:.3} outside [0.26, 0.69] (got {:.4e}, legacy {:.4e})",
         ratio,
         via_build.kt,
         legacy.kt
     );
-    // Absolute sanity: CT_aero in physical FPV range
+    // Absolute sanity: CT_aero in the measured tri-blade range
     let d_m: f64 = 5.0 * 0.0254;
     let ct_aero = via_build.kt / (1.225 * d_m.powi(4)) * (2.0 * std::f64::consts::PI).powi(2);
     assert!(
-        ct_aero > 0.08 && ct_aero < 0.14,
-        "CT_aero {:.4} outside physical range [0.08, 0.14]",
+        ct_aero > 0.15 && ct_aero < 0.22,
+        "CT_aero {:.4} outside the measured tri-blade range [0.15, 0.22]",
         ct_aero
     );
 }

@@ -172,17 +172,38 @@ pub fn lookup(spec: &PropellerSpec) -> PropCoefficients {
 
 /// Physical-CT calibration basis (2026-05-30), matching the recalibrated CSV.
 /// `ct_static` is a real static thrust coefficient — roughly size-independent
-/// (CT_aero ≈ 0.09–0.12 across FPV prop sizes); thrust scales with D⁴ via `kt`.
-/// `K_CT` sets the absolute level, anchored to iFlight XING2 2207 bench data
-/// (1576 g & 40.35 A at 16 V full throttle, 5" prop) together with
-/// the torque-balance loaded-RPM model. The legacy table over-produced thrust
-/// ~4× and had a non-physical diameter dependence; this replaces it.
-const K_CT: f64 = 0.00283;
+/// `K_CT` sets the absolute level. It is anchored to measured bench data for a
+/// six-inch three-blade propeller, for which two unrelated sources agree:
+///
+/// - Cobra CM-2213/12 (22 mm 12N14P stator) on an HQ 6x4.5x3, 11.1 V, full
+///   throttle: 1032.4 g at 17,253 rpm on 273.66 W → CT_aero 0.1853.
+/// - APC's own performance file for the 6x4.2E-3 three-blade: static CT 0.1850.
+///
+/// Pitch-corrected to 6x4.0 that is CT_aero ≈ 0.180, which is what `K_CT`
+/// reproduces. The previous 0.00283 gave 0.105 — 1.76x low — and the previous
+/// `KQ_KT_SCALE` of 0.348 gave CQ_aero 0.0058 against a measured 0.0139, 2.4x
+/// low. The two errors pointed opposite ways: too little drag torque let the
+/// torque balance settle at 98% of no-load, and the excess omega then made up
+/// most of the missing thrust. Thrust looked plausible while both halves were
+/// wrong, and the giveaway was an implied figure of merit above 0.8 on builds
+/// where no real propeller exceeds 0.68.
+///
+/// Because they compensate, these two constants must be changed together.
+/// `PhysicsConfig::momentum_theory_thrust_ceiling_n` exists to catch the
+/// combination that made this hard to see.
+const K_CT: f64 = 0.00485;
 /// Torque/thrust de-inflation: bench kq/kt ≈ 0.0088 vs the legacy ~0.025 ratio.
-const KQ_KT_SCALE: f64 = 0.348;
+const KQ_KT_SCALE: f64 = 0.47625;
 
 /// Physical-CT empirical fallback so unknown props degrade gracefully when the
 /// CSV is empty or all entries are unusable. Same basis as the CSV.
+/// The closed-form coefficient basis, exposed so `examples/regenerate_prop_table`
+/// can reproduce `data/prop_coefficients.csv` from it. Every row of that table is
+/// this function's output — the table caches the basis, it does not supplement it.
+pub fn derive_from_basis(spec: &PropellerSpec) -> PropCoefficients {
+    empirical_fallback(spec)
+}
+
 fn empirical_fallback(spec: &PropellerSpec) -> PropCoefficients {
     let pitch_m = 0.7 + 0.06 * spec.pitch_in;
     let blade_m = 0.85 + 0.05 * spec.blade_count as f64;
@@ -252,10 +273,15 @@ mod tests {
             LookupSource::ExactMatch | LookupSource::DimensionAverage
         ));
         let (kt, _kq) = coefficients_to_kt_kq(coef, 5.0);
-        // Anchor: kt for the canonical 5"×4.5"×3 racing prop after the 2026-05-30
-        // bench recalibration (CT_aero ≈ 0.109, a typical FPV 5" value). Was the
-        // legacy ~3.376e-6 — over-produced thrust ~4× (see CSV header).
-        let bench_kt = 8.77e-7;
+        // Anchor: kt for the canonical 5"x4.5"x3 racing prop.
+        //
+        // 2026-08-29 re-anchor: 8.77e-7 -> 1.4993e-6 (CT_aero 0.109 -> 0.186).
+        // The 2026-05-30 value was set from a single 5" operating point and was
+        // 1.71x low against measured tri-blade data — Cobra CM-2213/12 on an
+        // HQ 6x4.5x3 gives CT_aero 0.1853 and APC's own 6x4.2E-3 file gives
+        // 0.1850. Changed deliberately; see the change
+        // `fix-hitl-sim-flight-regression`, task 5.7.
+        let bench_kt = 1.4993e-6;
         let rel = (kt - bench_kt).abs() / bench_kt;
         assert!(
             rel < 0.10,
@@ -320,9 +346,13 @@ mod tests {
         assert!((coef.ct - expected_ct).abs() / expected_ct < 1e-9);
         // Resulting CT_aero must sit in the physical FPV-prop range.
         let ct_aero = coef.ct * (2.0 * std::f64::consts::PI).powi(2);
+        // Measured static CT for FPV tri-blades: APC 6x4.2E-3 0.185, Cobra
+        // HQ 6x4.5x3 0.1853, UIUC three-blade props 0.149-0.212. The previous
+        // 0.08-0.13 band was set from the model's own output rather than from
+        // measurement, and every value in it is below what any of those report.
         assert!(
-            (0.08..0.13).contains(&ct_aero),
-            "CT_aero {ct_aero:.3} unphysical"
+            (0.15..0.22).contains(&ct_aero),
+            "CT_aero {ct_aero:.3} outside the measured range for a tri-blade"
         );
     }
 }

@@ -539,6 +539,14 @@ impl BuildSpec {
             ..EscConfig::default()
         };
 
+        // The operating point is capped by whichever runs out first: the ESC's
+        // burst rating, or the pack's C-rating shared across four motors.
+        // Burst rather than continuous, because a static full-throttle figure
+        // is a momentary number — sustained draw is the thermal model's job.
+        let esc_limit = physics.esc.burst_amps;
+        let pack_limit = self.battery.capacity_mah / 1000.0 * self.battery.c_rating / 4.0;
+        physics.max_current_per_motor_a = esc_limit.min(pack_limit);
+
         physics
     }
 
@@ -1081,24 +1089,25 @@ mod tests {
         assert_eq!(via_build.battery_voltage, direct.battery_voltage);
         assert_eq!(via_build.motor_kt_electrical, direct.motor_kt_electrical);
 
-        // Recalibration: kt from physical-CT is intentionally ~0.25× the legacy
-        // inflated value (real CT_aero ~0.11 vs legacy ~0.42). The lookup gives
-        // the bench-matched value; from_build_specs retains the old formula.
+        // The lookup gives the measurement-anchored value; from_build_specs
+        // retains the legacy formula, which over-produced thrust. The gap
+        // narrowed at the 2026-08-29 re-anchor (CT_aero 0.109 -> 0.186), so the
+        // band moved with it: 0.15-0.40 -> 0.26-0.69. Deliberate; see task 5.7.
         let kt_ratio = via_build.kt / direct.kt;
         assert!(
-            kt_ratio > 0.15 && kt_ratio < 0.40,
+            kt_ratio > 0.26 && kt_ratio < 0.69,
             "kt de-inflation ratio {:.3} outside [0.15, 0.40] (got {:.4e}, legacy {:.4e})",
             kt_ratio,
             via_build.kt,
             direct.kt,
         );
 
-        // kt from the lookup should be physically reasonable: CT_aero in [0.08, 0.14]
+        // kt from the lookup should be physically reasonable: CT_aero in the measured tri-blade range [0.15, 0.22]
         let d_m: f64 = 5.0 * 0.0254;
         let ct_aero = via_build.kt / (1.225 * d_m.powi(4)) * (2.0 * std::f64::consts::PI).powi(2);
         assert!(
-            ct_aero > 0.08 && ct_aero < 0.14,
-            "CT_aero {:.4} outside physical FPV range [0.08, 0.14]",
+            ct_aero > 0.15 && ct_aero < 0.22,
+            "CT_aero {:.4} outside the measured tri-blade range [0.15, 0.22]",
             ct_aero,
         );
     }

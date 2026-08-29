@@ -57,6 +57,10 @@ pub struct PhysicsConfig {
     pub gravity: f64,
 
     // Electrical parameters
+    /// Propeller diameter in metres. Needed for the actuator-disc area, which
+    /// sets the momentum-theory ceiling on how much thrust a given electrical
+    /// power can possibly produce.
+    pub prop_diameter_m: f64,
     /// Motor KV rating (RPM per volt, unloaded)
     pub motor_kv: f64,
     /// Motor winding resistance in ohms
@@ -65,6 +69,15 @@ pub struct PhysicsConfig {
     pub battery_voltage: f64,
     /// Motor torque constant Kt in N·m/A (derived from KV: Kt = 60 / (2π * KV))
     pub motor_kt_electrical: f64,
+    /// Hard ceiling on the current one motor may draw, in Amps.
+    ///
+    /// The torque balance alone has no upper bound: it lets a motor pull
+    /// whatever current the winding resistance permits at the speed where prop
+    /// drag matches motor torque. Real airframes hit a limit long before that —
+    /// the ESC's rating, or the pack's C-rating shared across four motors.
+    /// Without this a 2306 on a 6" tri-blade settled at 49.7 A each, 199 A for
+    /// the airframe, and the model was content.
+    pub max_current_per_motor_a: f64,
     /// No-load (idle) current draw per motor in Amps — covers bearing friction,
     /// iron losses, and ESC quiescent draw. Typical 0.3-1.5 A for mini-quad motors.
     pub motor_no_load_amps: f64,
@@ -85,6 +98,10 @@ pub struct PhysicsConfig {
     pub motor_shutdown_temp_c: f64,
 }
 
+/// Sea-level air density in kg/m³, the basis for every aerodynamic coefficient
+/// in this crate and in `prop_coefficients`.
+pub const AIR_DENSITY: f64 = 1.225;
+
 impl Default for PhysicsConfig {
     fn default() -> Self {
         // Typical 5" FPV quad, ~2kg AUW
@@ -94,6 +111,7 @@ impl Default for PhysicsConfig {
         Self {
             mass_kg: 2.0,
             arm_length_m: 0.11,                 // 220mm diagonal frame
+            prop_diameter_m: 5.0 * 0.0254,      // 5" props
             inertia: [0.015, 0.015, 0.025], // kg·m² (balanced for PX4 default PIDs - higher Izz reduces yaw oscillation)
             kt: 1.9e-6,                     // thrust = kt * ω², gives ~12N at 2500 rad/s
             kq: 5.0e-8,                     // torque = kq * ω², kq/kt ≈ 0.026 (aggressive 5" prop)
@@ -107,6 +125,7 @@ impl Default for PhysicsConfig {
             battery_voltage: 14.8,       // 4S LiPo nominal (4 × 3.7V)
             motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * motor_kv),
             motor_no_load_amps: 0.5, // Quiescent draw — was hardcoded in motor.rs
+            max_current_per_motor_a: EscConfig::default().burst_amps,
             esc: EscConfig::default(),
 
             // Thermal parameters (estimated for 2306 motor ~33g)
@@ -215,6 +234,7 @@ impl PhysicsConfig {
         Self {
             mass_kg,
             arm_length_m,
+            prop_diameter_m: prop_diameter_inches * 0.0254,
             inertia: [ixx, iyy, izz],
             kt,
             kq,
@@ -228,6 +248,7 @@ impl PhysicsConfig {
             battery_voltage,
             motor_kt_electrical: 60.0 / (2.0 * std::f64::consts::PI * kv),
             motor_no_load_amps: 0.5,
+            max_current_per_motor_a: EscConfig::default().burst_amps,
             esc: EscConfig::default(),
 
             // Thermal parameters
@@ -267,12 +288,98 @@ impl PhysicsConfig {
             return self.motor_kv * v * std::f64::consts::PI / 30.0;
         }
 
-        // kq·ω² + (Kt²/R)·ω − Kt·V/R = 0
+        // Voltage-limited: kq·ω² + (Kt²/R)·ω − Kt·V/R = 0. The motor accelerates
+        // until back-EMF leaves only enough headroom to drive the current that
+        // balances prop drag.
         let a = self.kq;
         let b = kt_e * kt_e / r;
         let c = kt_e * v / r;
         let disc = b * b + 4.0 * a * c;
-        (-b + disc.sqrt()) / (2.0 * a)
+        let omega_voltage = (-b + disc.sqrt()) / (2.0 * a);
+
+        // Current-limited: once the ESC or the pack caps current, motor torque
+        // is pinned at Kt·(I_max − I₀) and the propeller settles where its drag
+        // matches that. Current RISES as speed falls, so the binding constraint
+        // is whichever speed is lower — a motor cannot sit below the
+        // current-limited speed without demanding more current than exists.
+        let usable = (self.max_current_per_motor_a - self.motor_no_load_amps).max(0.0);
+        if usable <= 0.0 {
+            return 0.0;
+        }
+        let omega_current = (kt_e * usable / self.kq).sqrt();
+
+        omega_voltage.min(omega_current)
+    }
+
+    /// Whether the full-throttle operating point is capped by available current
+    /// rather than by battery voltage. True means the build is ESC- or
+    /// pack-limited: more KV or more pitch would not buy more thrust.
+    pub fn is_current_limited(&self) -> bool {
+        let usable = (self.max_current_per_motor_a - self.motor_no_load_amps).max(0.0);
+        if usable <= 0.0 || self.kq < 1e-12 {
+            return true;
+        }
+        (self.motor_kt_electrical * usable / self.kq).sqrt() < self.voltage_limited_speed()
+    }
+
+    /// Full-throttle speed ignoring any current ceiling, in rad/s.
+    fn voltage_limited_speed(&self) -> f64 {
+        if self.kq < 1e-12 {
+            return self.motor_kv * self.battery_voltage * std::f64::consts::PI / 30.0;
+        }
+        let b = self.motor_kt_electrical.powi(2) / self.motor_resistance_ohm;
+        let c = self.motor_kt_electrical * self.battery_voltage / self.motor_resistance_ohm;
+        (-b + (b * b + 4.0 * self.kq * c).sqrt()) / (2.0 * self.kq)
+    }
+
+    /// Actuator-disc area of one propeller in m².
+    pub fn disc_area_m2(&self) -> f64 {
+        std::f64::consts::PI * (self.prop_diameter_m / 2.0).powi(2)
+    }
+
+    /// Electrical current one motor draws at full throttle, in Amps.
+    ///
+    /// At the loaded speed the winding sees `V − Kt·ω`; that residual is what
+    /// drives current through `R`. A motor spinning at nearly its no-load
+    /// speed has almost no residual, and therefore almost no power — which is
+    /// the cross-check `momentum_theory_thrust_ceiling_n` turns into a bound.
+    pub fn full_throttle_current_a(&self) -> f64 {
+        let omega = self.max_motor_speed_from_voltage();
+        let back_emf = self.motor_kt_electrical * omega;
+        let demanded = ((self.battery_voltage - back_emf) / self.motor_resistance_ohm).max(0.0);
+        // When the ESC or the pack is the binding constraint the motor sits
+        // below its voltage-limited speed, so the back-EMF term would imply a
+        // current nobody is supplying. The cap is the real draw.
+        demanded.min(self.max_current_per_motor_a)
+    }
+
+    /// Electrical power into one motor at full throttle, in Watts.
+    pub fn full_throttle_power_w(&self) -> f64 {
+        self.battery_voltage * self.full_throttle_current_a()
+    }
+
+    /// The most thrust one propeller could produce from its own full-throttle
+    /// electrical power, in Newtons — a hard physical ceiling.
+    ///
+    /// Momentum theory gives the induced power to produce thrust `T` through a
+    /// disc of area `A` as `T^(3/2) / sqrt(2·ρ·A)`. Inverting it bounds thrust
+    /// by available power. This assumes a lossless motor, a lossless ESC and a
+    /// figure of merit of 1.0, so a real propeller reaches perhaps 55–70% of
+    /// it. Exceeding it is not "optimistic" — it is thrust from no energy, and
+    /// it means the model's operating point is wrong however plausible the
+    /// thrust figure looks on its own.
+    pub fn momentum_theory_thrust_ceiling_n(&self) -> f64 {
+        let p = self.full_throttle_power_w();
+        if p <= 0.0 {
+            return 0.0;
+        }
+        (p * (2.0 * AIR_DENSITY * self.disc_area_m2()).sqrt()).powf(2.0 / 3.0)
+    }
+
+    /// Static thrust one motor produces at full throttle, in Newtons.
+    pub fn max_thrust_per_motor_n(&self) -> f64 {
+        let omega = self.max_motor_speed_from_voltage();
+        self.kt * omega * omega
     }
 
     /// Hover throttle as a percentage of max motor speed (0.0–1.0).
