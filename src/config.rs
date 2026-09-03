@@ -279,6 +279,7 @@ impl PhysicsConfig {
     /// The positive root is the loaded full-throttle RPM — no constant fraction
     /// needed. This correctly predicts ~0.88× no-load for mid-KV 5" builds AND
     /// the heavier ~0.5× bog on tiny high-KV motors (e.g. 0802 12000KV).
+    #[inline]
     pub fn max_motor_speed_from_voltage(&self) -> f64 {
         let kt_e = self.motor_kt_electrical;
         let r = self.motor_resistance_ohm;
@@ -433,6 +434,7 @@ impl PhysicsConfig {
     /// Calculate power derating factor based on motor temperature.
     ///
     /// Returns 1.0 at or below max_motor_temp_c, linearly decreasing to 0.0 at shutdown temp.
+    #[inline]
     pub fn thermal_derating_factor(&self, motor_temp_c: f64) -> f64 {
         if motor_temp_c <= self.max_motor_temp_c {
             1.0

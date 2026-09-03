@@ -70,6 +70,7 @@ pub fn throttle_to_omega(throttle: f64) -> f64 {
 ///
 /// # Returns
 /// Rate of change of motor speed in rad/s²
+#[inline]
 pub fn motor_derivative(current_speed: f64, commanded_speed: f64, config: &PhysicsConfig) -> f64 {
     (commanded_speed - current_speed) / config.tau_motor
 }
@@ -84,6 +85,7 @@ pub fn motor_derivative(current_speed: f64, commanded_speed: f64, config: &Physi
 ///
 /// # Returns
 /// Thrust force in Newtons (positive = upward in body frame)
+#[inline]
 pub fn compute_thrust(motor_speed: f64, config: &PhysicsConfig) -> f64 {
     config.kt * motor_speed * motor_speed
 }
@@ -98,6 +100,7 @@ pub fn compute_thrust(motor_speed: f64, config: &PhysicsConfig) -> f64 {
 ///
 /// # Returns
 /// Reaction torque magnitude in N·m
+#[inline]
 pub fn compute_reaction_torque(motor_speed: f64, config: &PhysicsConfig) -> f64 {
     config.kq * motor_speed * motor_speed
 }
@@ -185,8 +188,35 @@ pub fn apply_thermal_derating(
     motor_temp_c: f64,
     config: &PhysicsConfig,
 ) -> f64 {
+    apply_thermal_derating_with_max(
+        commanded_speed,
+        motor_temp_c,
+        config,
+        config.max_motor_speed_from_voltage(),
+    )
+}
+
+/// As [`apply_thermal_derating`], with the voltage-limited maximum supplied.
+///
+/// `max_motor_speed_from_voltage` re-solves a torque balance from `config`
+/// fields that cannot change within a tick, and the derating is applied per
+/// motor per RK4 substep — sixteen times a tick. Disassembling the release
+/// binary showed all eight `fsqrt` in `state_derivative` came from those
+/// repeats, un-eliminated: `thermal_derating_factor`'s if/else diamond sits
+/// between the instances, so GVN cannot hoist across it.
+///
+/// Deliberately a parameter rather than a field cached on `PhysicsConfig`:
+/// `BuildSpec::to_physics_config` mutates `kt`, `kq` and
+/// `max_current_per_motor_a` *after* construction, so a constructor-computed
+/// cache would go stale in silence.
+#[inline]
+pub fn apply_thermal_derating_with_max(
+    commanded_speed: f64,
+    motor_temp_c: f64,
+    config: &PhysicsConfig,
+    max_speed: f64,
+) -> f64 {
     let derating = config.thermal_derating_factor(motor_temp_c);
-    let max_speed = config.max_motor_speed_from_voltage();
     let derated_max = MIN_MOTOR_SPEED + derating * (max_speed - MIN_MOTOR_SPEED);
     commanded_speed.min(derated_max)
 }

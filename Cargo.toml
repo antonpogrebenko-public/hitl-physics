@@ -1,6 +1,6 @@
 [package]
 name = "hitl-physics"
-version = "0.13.0"
+version = "0.13.1"
 edition = "2021"
 description = "Quadrotor physics simulation engine for HITL testing"
 license = "MIT"
@@ -25,3 +25,10 @@ wasm = ["wasm-bindgen", "js-sys"]
 
 [dev-dependencies]
 approx = "0.5"
+# default-features = false drops criterion's plotting and rayon stack; the
+# benches assert direction and magnitude, not HTML reports.
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "rk4"
+harness = false

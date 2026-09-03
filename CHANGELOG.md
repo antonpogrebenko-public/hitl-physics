@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.13.1 — 2026-09-04
+
+Performance only. No simulated quantity changes; the 148-test suite passes
+unchanged.
+
+- `state_derivative` is 28.7 % faster in isolation (29.36 ns to 20.94 ns,
+  measured against a same-session control arm). **`rk4_step` did not move** —
+  166.25 ns before, 171.25 ns after, and `rk4_step_x400` flat at ~68 us. The
+  standalone benchmark black-boxes its inputs per iteration, which defeats
+  hoisting the compiler already performs across the four derivative calls inside
+  a step, so what this removes was already gone in the real call path. Recorded
+  as measured rather than claimed as a win.
+
+- `apply_thermal_derating_with_max` takes the current ceiling as a parameter
+  instead of recomputing it. Deliberately **not** cached on `PhysicsConfig`:
+  `BuildSpec::to_physics_config` mutates `kt`, `kq` and
+  `max_current_per_motor_a` after construction, so a cached value would be stale
+  for exactly the builds that need it.
+
+- Propeller coefficient rows hold `&'static str` and are parsed once through a
+  `OnceLock`, folded rather than collected.
+
+- Criterion benches added under `benches/rk4.rs`. Read them with a control arm:
+  a stored baseline from a loaded machine measured pristine code at 93.6 ns
+  against a 46.9 ns baseline, and criterion will happily report that recovery as
+  a 69 % improvement.
+
 ## 0.13.0 — 2026-08-29
 
 ### Changed

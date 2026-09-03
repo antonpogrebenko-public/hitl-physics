@@ -23,6 +23,7 @@
 //!    (returns the same value the old code would have computed) — used when
 //!    the table is empty or no entry within a sensible distance exists.
 
+use std::sync::OnceLock;
 use crate::build::PropellerSpec;
 
 /// Air density (kg/m^3) used to convert ct/cq → kt/kq in the simulation.
@@ -57,18 +58,24 @@ struct Entry {
     diameter_in: f64,
     pitch_in: f64,
     blade_count: i32,
-    // Manufacturer / model strings are kept for future tie-breaking and
-    // diagnostic dumps; not consumed by the current lookup paths.
+    // Manufacturer / model are kept for future tie-breaking and diagnostic
+    // dumps; not consumed by the current lookup paths.
+    //
+    // Borrowed from `CSV_DATA`, which is `include_str!`-ed and therefore
+    // 'static, rather than allocated. Two `String`s per row over 52 rows was
+    // 104 heap allocations for text nothing reads.
     #[allow(dead_code)]
-    manufacturer: String,
+    manufacturer: &'static str,
     #[allow(dead_code)]
-    model: String,
+    model: &'static str,
     ct: f64,
     cq: f64,
 }
 
 fn parse_entries() -> Vec<Entry> {
-    let mut out = Vec::new();
+    // Sized up front: the table is 52 rows, and growing from zero reallocated
+    // roughly seven times on the way there.
+    let mut out = Vec::with_capacity(64);
     for line in CSV_DATA.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with("diameter_in") {
@@ -91,8 +98,8 @@ fn parse_entries() -> Vec<Entry> {
             diameter_in,
             pitch_in,
             blade_count,
-            manufacturer: fields[3].to_string(),
-            model: fields[4].to_string(),
+            manufacturer: fields[3],
+            model: fields[4],
             ct,
             cq,
         });
@@ -100,12 +107,15 @@ fn parse_entries() -> Vec<Entry> {
     out
 }
 
-thread_local! {
-    static ENTRIES: Vec<Entry> = parse_entries();
-}
+/// Parsed once per process, not once per thread.
+///
+/// `thread_local!` re-parsed the whole table on every thread that looked
+/// anything up — the daemon has several — for a table that is `include_str!`-ed
+/// and therefore identical in all of them.
+static ENTRIES: OnceLock<Vec<Entry>> = OnceLock::new();
 
 fn with_entries<R>(f: impl FnOnce(&[Entry]) -> R) -> R {
-    ENTRIES.with(|entries| f(entries.as_slice()))
+    f(ENTRIES.get_or_init(parse_entries).as_slice())
 }
 
 /// Number of entries in the bundled table. Useful for tests and diagnostics.
@@ -123,23 +133,32 @@ pub fn lookup(spec: &PropellerSpec) -> PropCoefficients {
         }
 
         // 1. Exact (D, P, B) match — if there are multiple, average them.
-        let exact: Vec<&Entry> = entries
-            .iter()
-            .filter(|e| {
-                (e.diameter_in - spec.diameter_in).abs() < 1e-3
-                    && (e.pitch_in - spec.pitch_in).abs() < 1e-3
-                    && e.blade_count == spec.blade_count
-            })
-            .collect();
-        if !exact.is_empty() {
-            let ct = exact.iter().map(|e| e.ct).sum::<f64>() / exact.len() as f64;
-            let cq = exact.iter().map(|e| e.cq).sum::<f64>() / exact.len() as f64;
-            let source = if exact.len() == 1 {
+        //
+        // Folded rather than collected: the previous form allocated a Vec of
+        // references on every lookup before it knew whether anything matched.
+        let mut sum_ct = 0.0;
+        let mut sum_cq = 0.0;
+        let mut matches = 0usize;
+        for e in entries.iter().filter(|e| {
+            (e.diameter_in - spec.diameter_in).abs() < 1e-3
+                && (e.pitch_in - spec.pitch_in).abs() < 1e-3
+                && e.blade_count == spec.blade_count
+        }) {
+            sum_ct += e.ct;
+            sum_cq += e.cq;
+            matches += 1;
+        }
+        if matches > 0 {
+            let source = if matches == 1 {
                 LookupSource::ExactMatch
             } else {
                 LookupSource::DimensionAverage
             };
-            return PropCoefficients { ct, cq, source };
+            return PropCoefficients {
+                ct: sum_ct / matches as f64,
+                cq: sum_cq / matches as f64,
+                source,
+            };
         }
 
         // 2. Nearest neighbor + rescale by pitch/blade ratios so the result

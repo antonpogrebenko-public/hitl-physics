@@ -2,7 +2,7 @@
 
 use crate::config::PhysicsConfig;
 use crate::motor::{
-    apply_thermal_derating, compute_reaction_torque, compute_thrust, motor_derivative,
+    apply_thermal_derating_with_max, compute_reaction_torque, compute_thrust, motor_derivative,
     motor_temp_derivative,
 };
 use nalgebra::{UnitQuaternion, Vector3};
@@ -140,9 +140,11 @@ impl QuadrotorState {
         Vector3::new(drag_x, drag_y, drag_z)
     }
 
-    /// Compute total forces in NED frame.
-    pub fn compute_forces(&self, config: &PhysicsConfig) -> Vector3<f64> {
-        let (thrust_body, _) = self.compute_motor_forces(config);
+    /// Total forces in NED frame, given a thrust already computed.
+    ///
+    /// Split out so `state_derivative` can compute the motor forces once and
+    /// use both halves, without changing what the public method does.
+    fn forces_from(&self, config: &PhysicsConfig, thrust_body: Vector3<f64>) -> Vector3<f64> {
         let drag_body = self.compute_drag(config);
 
         // Total force in body frame
@@ -155,6 +157,12 @@ impl QuadrotorState {
         let gravity = Vector3::new(0.0, 0.0, config.mass_kg * config.gravity);
 
         force_ned + gravity
+    }
+
+    /// Compute total forces in NED frame.
+    pub fn compute_forces(&self, config: &PhysicsConfig) -> Vector3<f64> {
+        let (thrust_body, _) = self.compute_motor_forces(config);
+        self.forces_from(config, thrust_body)
     }
 
     /// Compute total torques in body frame.
@@ -176,8 +184,12 @@ impl QuadrotorState {
         // Position derivative = velocity
         let velocity = self.velocity;
 
-        // Acceleration = F / m
-        let force_ned = self.compute_forces(config);
+        // One call, both halves used.
+        //
+        // `compute_forces` computed the motor thrust and discarded the torque;
+        // `compute_torques` computed both again and discarded the thrust.
+        let (thrust_body, torque_body) = self.compute_motor_forces(config);
+        let force_ned = self.forces_from(config, thrust_body);
         let acceleration = [
             force_ned.x / config.mass_kg,
             force_ned.y / config.mass_kg,
@@ -205,7 +217,7 @@ impl QuadrotorState {
 
         // Angular acceleration from Euler's equations
         // I * ω̇ = τ - ω × (I * ω)
-        let torque = self.compute_torques(config);
+        let torque = torque_body;
         let [ixx, iyy, izz] = config.inertia;
         let omega = Vector3::new(p, q, r);
         let i_omega = Vector3::new(ixx * p, iyy * q, izz * r);
@@ -219,9 +231,19 @@ impl QuadrotorState {
 
         // Motor dynamics — apply thermal derating before computing derivative so
         // an overheating motor cannot respond to full-throttle commands.
+        //
+        // The voltage-limited maximum is solved once here rather than once per
+        // motor: it depends only on config fields, which cannot change within a
+        // substep, and it was being re-solved four times here and four more in
+        // the daemon's own throttle conversion — 20 times a tick for one value.
+        let max_speed = config.max_motor_speed_from_voltage();
         let motor_derivs = std::array::from_fn(|i| {
-            let derated_cmd =
-                apply_thermal_derating(motor_commands[i], self.motor_temps[i], config);
+            let derated_cmd = apply_thermal_derating_with_max(
+                motor_commands[i],
+                self.motor_temps[i],
+                config,
+                max_speed,
+            );
             motor_derivative(self.motor_speeds[i], derated_cmd, config)
         });
 
