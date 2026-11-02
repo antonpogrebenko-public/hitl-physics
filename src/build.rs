@@ -126,7 +126,7 @@ impl BatterySpec {
 /// The gyro and accel noise densities are medians measured at rest on public
 /// PX4 flight logs (calibration run 2026-11-02) where that run proposed a value
 /// for the variant; every other field, and every variant without a proposal,
-/// keeps its hitl-physics 0.13.1 datasheet-derived value. The comment above each
+/// keeps its hitl-physics 0.13.1 table value. The comment above each
 /// measured value in the generated `imu_profile` says what it replaced and how
 /// many vehicles it is the median of.
 #[derive(Debug, Clone, Copy)]
@@ -145,7 +145,7 @@ pub struct ImuProfile {
 ///
 /// `noise_sigma_gauss` is a median measured on public PX4 flight logs
 /// (calibration run 2026-11-02) where that run proposed a value for the
-/// variant; otherwise it keeps its hitl-physics 0.13.1 datasheet-derived value.
+/// variant; otherwise it keeps its hitl-physics 0.13.1 table value.
 #[derive(Debug, Clone, Copy)]
 pub struct MagProfile {
     /// Measurement noise standard deviation in Gauss.
@@ -156,7 +156,7 @@ pub struct MagProfile {
 ///
 /// `noise_sigma_m` is a median measured on public PX4 flight logs (calibration
 /// run 2026-11-02) where that run proposed a value for the variant; otherwise
-/// it keeps its hitl-physics 0.13.1 datasheet-derived value.
+/// it keeps its hitl-physics 0.13.1 table value.
 #[derive(Debug, Clone, Copy)]
 pub struct BaroProfile {
     /// Altitude measurement noise standard deviation in meters.
@@ -164,7 +164,8 @@ pub struct BaroProfile {
 }
 
 /// Aggregate of sensor profiles for a given flight controller. Each profile is
-/// measured or datasheet-derived as described on its own type.
+/// measured where the run proposed a value and otherwise carries its hitl-physics
+/// 0.13.1 table value, as described on its own type.
 #[derive(Debug, Clone, Copy)]
 pub struct SensorProfiles {
     pub imu: ImuProfile,
@@ -180,9 +181,11 @@ pub struct SensorProfiles {
 ///
 /// The position, altitude and velocity sigmas and the update rate are medians
 /// measured on public PX4 flight logs (calibration run 2026-11-02) where that
-/// run proposed a value for the variant, for the fix class the generated
-/// comments name; every other field, and every variant without a proposal,
-/// keeps its hitl-physics 0.13.1 datasheet-derived value.
+/// run proposed a value for the variant. The fix class of the measured values
+/// is rtk_fixed for UbloxF9P and SeptentrioMosaic, and standalone_3d for
+/// UbloxM8N, UbloxM9N, UbloxM10, Ubx7 and Other. Here3, Ubx6 and Ubx20 have no
+/// proposal. Every other field, and every field or variant without a proposal,
+/// keeps its hitl-physics 0.13.1 table value.
 #[derive(Debug, Clone, Copy)]
 pub struct GpsProfile {
     /// Horizontal position sigma in meters.
