@@ -120,8 +120,15 @@ impl BatterySpec {
 // Sensor noise profiles (Phase 3 — data only, daemon adapts to hitl-sensors)
 // =============================================================================
 
-/// IMU noise profile — datasheet-derived values that map directly onto
+/// IMU noise profile. The values map directly onto
 /// `hitl_sensors::ImuConfig` field-by-field at the daemon boundary.
+///
+/// The gyro and accel noise densities are medians measured at rest on public
+/// PX4 flight logs (calibration run 2026-11-02) where that run proposed a value
+/// for the variant; every other field, and every variant without a proposal,
+/// keeps its hitl-physics 0.13.1 datasheet-derived value. The comment above each
+/// measured value in the generated `imu_profile` says what it replaced and how
+/// many vehicles it is the median of.
 #[derive(Debug, Clone, Copy)]
 pub struct ImuProfile {
     /// Gyroscope noise density in rad/s/√Hz.
@@ -135,6 +142,10 @@ pub struct ImuProfile {
 }
 
 /// Magnetometer noise profile.
+///
+/// `noise_sigma_gauss` is a median measured on public PX4 flight logs
+/// (calibration run 2026-11-02) where that run proposed a value for the
+/// variant; otherwise it keeps its hitl-physics 0.13.1 datasheet-derived value.
 #[derive(Debug, Clone, Copy)]
 pub struct MagProfile {
     /// Measurement noise standard deviation in Gauss.
@@ -142,13 +153,18 @@ pub struct MagProfile {
 }
 
 /// Barometer noise profile.
+///
+/// `noise_sigma_m` is a median measured on public PX4 flight logs (calibration
+/// run 2026-11-02) where that run proposed a value for the variant; otherwise
+/// it keeps its hitl-physics 0.13.1 datasheet-derived value.
 #[derive(Debug, Clone, Copy)]
 pub struct BaroProfile {
     /// Altitude measurement noise standard deviation in meters.
     pub noise_sigma_m: f64,
 }
 
-/// Aggregate of sensor profiles for a given flight controller.
+/// Aggregate of sensor profiles for a given flight controller. Each profile is
+/// measured or datasheet-derived as described on its own type.
 #[derive(Debug, Clone, Copy)]
 pub struct SensorProfiles {
     pub imu: ImuProfile,
@@ -161,9 +177,15 @@ pub struct SensorProfiles {
 /// Mirrors `hitl_sensors::GpsConfig` plus fix-acquisition state machine inputs
 /// that today's `GpsSensor` doesn't model. The daemon converts to `GpsConfig`
 /// and (eventually) feeds the TTFF/sat-count fields into HIL_GPS injection.
+///
+/// The position, altitude and velocity sigmas and the update rate are medians
+/// measured on public PX4 flight logs (calibration run 2026-11-02) where that
+/// run proposed a value for the variant, for the fix class the generated
+/// comments name; every other field, and every variant without a proposal,
+/// keeps its hitl-physics 0.13.1 datasheet-derived value.
 #[derive(Debug, Clone, Copy)]
 pub struct GpsProfile {
-    /// Horizontal position σ in meters (CEP-derived).
+    /// Horizontal position sigma in meters.
     pub horizontal_noise_sigma_m: f64,
     /// Vertical position σ in meters.
     pub altitude_noise_sigma_m: f64,
@@ -852,8 +874,11 @@ impl BuildSpec {
     /// selection. Returns a `SensorProfiles` bundle that the daemon converts
     /// into `hitl_sensors::{ImuConfig,MagConfig,BaroConfig}`.
     ///
-    /// Missing chip selections fall back to the `Other` variant (legacy
-    /// MPU-6000-class for IMU, BMP280-class for baro, HMC5883-class for mag).
+    /// A missing IMU or barometer selection falls back to the `Other` variant
+    /// of that chip enum. Since 0.14.0 `Other` holds the pooled median of the
+    /// calibration run 2026-11-02 over every vehicle of the part type (2434 for
+    /// the IMU, 915 for the barometer), not a datasheet part. A build with no
+    /// magnetometer selection gets `None`, not `MagChip::Other`.
     pub fn to_sensor_profiles(&self) -> SensorProfiles {
         let imu = self
             .flight_controller
@@ -1891,7 +1916,7 @@ mod tests {
         let m8 = GpsChipset::UbloxM8N.gps_profile();
         let f9 = GpsChipset::UbloxF9P.gps_profile();
         let ratio = m8.horizontal_noise_sigma_m / f9.horizontal_noise_sigma_m;
-        // M8N: 1.5 m, F9P RTK: 0.014 m → ~107×
+        // M8N: 1.198 m, F9P RTK: 0.0141 m: a ratio of about 85
         assert!(ratio > 50.0, "F9P expected ≥50× tighter, got {}×", ratio);
         assert!(f9.altitude_noise_sigma_m < m8.altitude_noise_sigma_m);
     }

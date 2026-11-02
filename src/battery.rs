@@ -18,12 +18,18 @@ use crate::motor::compute_motor_current;
 // cell_count_mismatch_count).
 //
 // R fit: rapid current-step regression (dV = -R * dI) over 842356 step events,
-// per cell count.
+// per cell count. The step events come from the 11126 logs on the fit side of
+// the vehicle-wise split that had at least one step event (per_log_r in
+// battery-fit.json); the held-out logs and the logs without step events give
+// none.
 // OCV fit: samples taken below 3 A and inside 3.0-4.25 V per cell, binned by
 // state of charge into 20 bins of width 0.05, the median per bin (a bin with
 // fewer than 5 samples is interpolated from its neighbours), then made monotone
-// by isotonic regression. State of charge is the logged `remaining`, or the
-// logged discharged mAh against a capacity estimate when `remaining` is absent.
+// by isotonic regression. State of charge is the logged `remaining` when it
+// moves by more than 0.02 over the log. Otherwise (absent, or moving by 0.02 or
+// less) it is the logged discharged mAh against a capacity estimate of the
+// maximum discharged mAh divided by 0.8, when the discharged mAh is positive
+// and rises; a log with neither gives no OCV samples.
 //
 // Held-out validation (the deployed tables, on held-out logs split by vehicle):
 // median voltage error 0.0822 V/cell over 3276 scored logs, under the 0.10
@@ -105,10 +111,11 @@ fn fitted_r_mohm_per_cell(cell_count: u8) -> f64 {
 /// Estimate total internal resistance for a LiPo pack from cell count and C rating.
 ///
 /// Uses per-cell resistance fitted from public PX4 flight logs (the calibration
-/// run 2026-11-02, 842356 step events from 35919 real logs).  The values are keyed by
-/// cell count; C-rating is not reliably present in PX4 logs, so the `c_rating`
-/// argument is preserved for API compatibility and as an override path when a
-/// caller has a known C-rating (values are clamped to the fitted range).
+/// run 2026-11-02: 842356 step events, taken from the 11126 fit-side logs that
+/// had step events, out of a corpus of 35919 real logs).  The values are keyed
+/// by cell count; C-rating is not reliably present in PX4 logs, so the
+/// `_c_rating` argument is ignored and is kept only for API compatibility.
+/// There is no clamping: a cell count outside the table gets the pooled default.
 ///
 /// Cells in series sum.  Returned value is in ohms.
 pub fn estimate_r_internal_ohm(cell_count: u8, _c_rating: f64) -> f64 {
