@@ -2,7 +2,7 @@
 
 ## 0.14.0 - 2026-11-03
 
-Sensor noise values and battery constants now come from a calibration run dated 2026-11-02 on public PX4 flight logs (the run and its tooling are in the th3seus-tools repository). Only sensor noise and battery values change; the rigid-body, motor, propeller and drag models are unchanged. Every changed value is listed below, as it ships (the generated Rust rounds each measured value to 4 significant digits).
+Sensor noise values and battery constants now come from a calibration run dated 2026-11-02 on public PX4 flight logs (the run and its tooling are in the th3seus-tools repository). Only sensor noise values, GPS update rates (for example UbloxM9N 10.0 to 8.001 Hz and UbloxF9P 8.0 to 5.051 Hz) and battery values change; the rigid-body, motor, propeller and drag models are unchanged. Every changed value is listed below, as it ships (the generated Rust rounds each measured value to 4 significant digits).
 
 ### Sensor values that changed
 
@@ -102,7 +102,7 @@ The `Other` profiles for IMU, magnetometer, barometer and GPS now hold the poole
 
 ### Battery
 
-Per-cell internal resistance by cell count, from 842356 current steps in 35919 real logs (49 simulated logs excluded, split seed 20260623). The table now has rows for 1S to 10S and 12S to 14S; 0.13.1 had rows for 1S, 3S, 4S, 6S and 12S, and used its default of 8.3279 mohm per cell for every other cell count.
+Per-cell internal resistance by cell count, from 842356 current steps. The steps come from the 11126 logs on the fit side of the vehicle-wise split that had at least one step event, out of a corpus of 35919 real logs (49 simulated logs excluded, split seed 20260623); held-out logs and logs without step events give none. The table now has rows for 1S to 10S and 12S to 14S; 0.13.1 had rows for 1S, 3S, 4S, 6S and 12S, and used its default of 8.3279 mohm per cell for every other cell count.
 
 | Cells | Old (0.13.1) mohm per cell | New mohm per cell | Step events (n) or fallback |
 |---|---|---|---|
@@ -127,9 +127,30 @@ Per-cell internal resistance by cell count, from 842356 current steps in 35919 r
 
 Deployment notes:
 
-- The run's held-out check per cell count (median over held-out logs scored for that count) is thin for two counts: 10S has only 6 held-out logs and 7S only 11.
+- The run's held-out check per cell count (median over held-out logs scored for that count) is thin for two counts: 10S has only 6 held-out logs and 7S only 11. 10S is also the worst cell count: its median signed error (predicted minus measured voltage per cell) is +0.3524 V per cell over those 6 logs, so 10S packs under-predict sag by about 0.35 V per cell.
+- The fallback is not monotone in cell count. 1S, 9S (both under 200 step events), 11S, and 15S and above use the pooled 5.5699 mohm per cell, while 8S is 3.2586, 10S 3.8934 and 12S 2.1526. An 11S pack therefore gets about 2.6x the resistance per cell of a 12S pack (5.5699 against 2.1526), about 2.4x in total (61.3 mohm against 25.8 mohm).
 - 2S and 7S under-predict sag: the median signed error (predicted minus measured voltage per cell) is +0.1240 V for 2S and +0.1226 V for 7S, about 0.12 V per cell.
 - For 12S, a comparison made in the calibration tool's review before the cell-count check was added found the old 4 mohm/cell floor slightly better than the measured median (0.0940 vs 0.0957 V per cell held-out error). This figure comes from that review, not from the published run files.
+
+### Read before deploying
+
+IMU noise is at rest, not in flight. The IMU densities are medians of the noise measured while the vehicle was disarmed. The run's own report (section "Gaps TH3SEUS does not model") puts the in-flight gyro noise density at 0.0008893 rad/s/sqrt(Hz) against 0.0001012 at rest, a ratio of 8.78 (987 flight logs, 3671 at-rest logs), and says vibration is not modelled; it also says the ratio is biased low. The 0.13.1 `Mpu6000` and `Other` gyro value, 8.726646e-4, sat near the in-flight level. 0.14.0 lowers it to 7.141e-5 for `Mpu6000` (12.2 times lower) and 9.572e-5 for `Other` (9.1 times lower); the accel density falls from 6.37e-3 to 0.001504 (4.2 times) and 0.001274 (5.0 times). In HITL flight the estimator therefore sees gyro noise well below what these vehicles show in real flight. The run quotes no in-flight accel figure.
+
+What the other values measure:
+
+- GPS rows: the `measurement` fields are `gps.eph_median_m`, `gps.epv_median_m`, `gps.speed_accuracy_median_m_s` and `gps.update_rate_hz`: medians over vehicles of the logged horizontal accuracy (eph), vertical accuracy (epv), speed accuracy and update rate, for the fix class named in the table (`standalone_3d` or `rtk_fixed`).
+- Barometer and magnetometer sigmas: the run's rules are an Allan slope within 0.15 of -0.5 and simulator rates of 50.0 Hz for both. A value is scaled by sqrt(simulator rate / logged rate) only when the log is at the simulator rate or above; below it the logged value is kept (the report: a series logged below the simulator rate holds samples at the driver's own, unknown rate). For all 17 proposed barometer and magnetometer rows the median factor is 1; the median logged rate is about 1 Hz for 16 of them and 10.36 Hz for `Spl06`. So these sigmas are per-sample values at the logged rate, not values at the 50 Hz the simulator runs these sensors at.
+
+Entries the run did not measure keep their 0.13.1 values (the rule is at least 10 vehicles per proposed value) and now sit far from their measured siblings. They are candidates for a later run:
+
+- `Mpu6500` gyro 9.4e-4 against 7.141e-5 for `Mpu6000` and 9.572e-5 for `Other`; accel 6.86e-3 against 0.001504 and 0.001274. The run's own medians for it, on 9 vehicles and so not proposed, were 1.175e-4 (gyro) and 1.169e-3 (accel).
+- `Here3` velocity sigma 0.05 against 0.2344 for `UbloxM9N` (no eligible log for `Here3`, 0 vehicles); its other three measured fields and `Lsm6dso` also have 0 vehicles.
+- `Dps310` 0.05 m against 0.2198 m for the barometer `Other`; too few `Dps310` logs pass the white-noise check (2 vehicles).
+- `UbloxM10` update rate 10.0 Hz (the run's median was 2.0 Hz on 6 vehicles, not proposed) and `SeptentrioMosaic` update rate 100.0 Hz (no eligible log).
+
+### Breaking change
+
+`ImuChip`, `BaroChip`, `MagChip` and `GpsChipset` gain variants (23 in all), which breaks an exhaustive `match` on any of them in a dependent crate. hitl-daemon has none on these enums: it builds them from strings with `_` arms.
 
 ### No longer true in measured data
 
@@ -140,13 +161,15 @@ Statements that earlier tests and comments made about the part tables, and that 
 - RM3100 is not 30x or more quieter than HMC5883: the measured ratio is about 2.2 (0.003405 gauss against 0.001544).
 - DPS310 is not the lowest-noise barometer of the older five: SPL06 measures 0.02095 m against the unmeasured DPS310 value of 0.05 m (DPS310 has no proposal and keeps 0.05).
 - Here3 no longer has the same horizontal accuracy as the M9N to within 0.01 m: Here3 keeps 0.9 m while `UbloxM9N` is now 0.8705 m (its latency is still higher, 100 ms against 80 ms).
-- `GpsChipset::Other` no longer equals `UbloxM8N` for horizontal sigma and the other measured fields: `Other` horizontal is 0.812 m against 1.198 m (`max_satellites` and `delay_ms` still match).
+- `GpsChipset::Other` no longer equals `UbloxM8N` for the three noise sigmas: `Other` horizontal is 0.812 m against 1.198 m, altitude 1.25 m against 1.87 m, velocity 0.1391 m/s against 0.268 m/s. The measured `update_rate_hz` is 5.0 for both, and the drift, delay, time-to-first-fix and `max_satellites` fields still match.
 
 Also, the Septentrio mosaic RTK horizontal sigma moved from 0.006 m to 0.01 m (listed in the table above); the 0.006 m figure in its code comment is stale.
 
 ### Comments in the code
 
 The per-variant comments in `src/build.rs` were carried over unchanged from 0.13.1 by the generator and still quote datasheet figures. Some disagree with the measured values, for example the ICM-42688-P comment "~17x quieter than MPU6000", the "Slightly noisier than MPU6000" comment on the MPU-6500, the magnetometer figures in mGauss (RM3100 "~0.013 mGauss" against a measured 1.5 mGauss), the barometer comment "best in class" on the DPS310, and the GPS CEP figures and the M10 "similar accuracy to M9N" and Here3 "built on u-blox M9N" comments. The measured value in the code is the one used; the comment is not.
+
+The four generated `///` doc lines that rustdoc shows still say "Datasheet-derived ...": on `imu_profile`, `mag_profile`, `baro_profile` and `gps_profile`. They are wrong for every measured value. The accurate provenance of each measured value is the generated comment above it, "was X (hitl-physics 0.13.1); median of N vehicles, run 2026-11-02". The hand-written docs of `ImuProfile`, `MagProfile`, `BaroProfile`, `GpsProfile` and `to_sensor_profiles` were corrected.
 
 ## 0.13.1 — 2026-09-04
 
