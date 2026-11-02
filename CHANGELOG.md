@@ -1,5 +1,153 @@
 # Changelog
 
+## 0.14.0 - 2026-11-03
+
+Sensor noise values and battery constants now come from a calibration run dated 2026-11-02 on public PX4 flight logs (the run and its tooling are in the th3seus-tools repository). Only sensor noise and battery values change; the rigid-body, motor, propeller and drag models are unchanged. Every changed value is listed below, as it ships (the generated Rust rounds each measured value to 4 significant digits).
+
+### Sensor values that changed
+
+Existing variants and `Other`. "Old" is the 0.13.1 value; "Vehicles" is the number of vehicles behind the new median. GPS rows carry the fix class of the measurement. Two GPS `update_rate_hz` values were re-measured and stay at 5.0 (`UbloxM8N`, `Other`); they are not listed. Fields not listed (bias sigma and tau, drift, time to first fix, delays, and the values with no proposal) are unchanged. Units are those of the field names: IMU noise densities in rad/s/sqrt(Hz) (gyro) and m/s^2/sqrt(Hz) (accel), magnetometer noise in gauss, barometer noise in m, GPS noise in m and m/s.
+
+| Part | Variant | Field | Old (0.13.1) | New | Vehicles |
+|---|---|---|---|---|---|
+| imu | Mpu6000 | `gyro_noise_density` | 8.726646e-4 | 7.141e-5 | 70 |
+| imu | Mpu6000 | `accel_noise_density` | 6.37e-3 | 0.001504 | 70 |
+| imu | Icm20689 | `gyro_noise_density` | 8.73e-5 | 9.295e-5 | 149 |
+| imu | Icm20689 | `accel_noise_density` | 7.85e-4 | 0.001502 | 149 |
+| imu | Icm42688p | `gyro_noise_density` | 4.88e-5 | 7.997e-5 | 373 |
+| imu | Icm42688p | `accel_noise_density` | 6.86e-4 | 0.001368 | 373 |
+| imu | Bmi270 | `gyro_noise_density` | 1.40e-4 | 0.0001092 | 33 |
+| imu | Bmi270 | `accel_noise_density` | 2.45e-3 | 0.001326 | 33 |
+| imu | Other | `gyro_noise_density` | 8.726646e-4 | 9.572e-5 | 2434 |
+| imu | Other | `accel_noise_density` | 6.37e-3 | 0.001274 | 2434 |
+| baro | Bmp388 | `noise_sigma_m` | 0.08 | 0.1059 | 78 |
+| baro | Spl06 | `noise_sigma_m` | 0.10 | 0.02095 | 18 |
+| baro | Ms5611 | `noise_sigma_m` | 0.10 | 0.2276 | 646 |
+| baro | Other | `noise_sigma_m` | 0.15 | 0.2198 | 915 |
+| mag | Hmc5883 | `noise_sigma_gauss` | 0.0006 | 0.003405 | 15 |
+| mag | Qmc5883 | `noise_sigma_gauss` | 0.0005 | 0.003216 | 98 |
+| mag | Ist8310 | `noise_sigma_gauss` | 0.0003 | 0.002705 | 410 |
+| mag | Rm3100 | `noise_sigma_gauss` | 0.000013 | 0.001544 | 104 |
+| mag | Lis3mdl | `noise_sigma_gauss` | 0.00032 | 0.008952 | 26 |
+| mag | Other | `noise_sigma_gauss` | 0.0006 | 0.003485 | 1122 |
+| gps | UbloxM8N (standalone_3d) | `horizontal_noise_sigma_m` | 1.5 | 1.198 | 302 |
+| gps | UbloxM8N (standalone_3d) | `altitude_noise_sigma_m` | 3.0 | 1.87 | 302 |
+| gps | UbloxM8N (standalone_3d) | `velocity_noise_sigma_mps` | 0.10 | 0.268 | 302 |
+| gps | UbloxM9N (standalone_3d) | `horizontal_noise_sigma_m` | 0.9 | 0.8705 | 1100 |
+| gps | UbloxM9N (standalone_3d) | `altitude_noise_sigma_m` | 1.5 | 1.43 | 1100 |
+| gps | UbloxM9N (standalone_3d) | `velocity_noise_sigma_mps` | 0.05 | 0.2344 | 1100 |
+| gps | UbloxM9N (standalone_3d) | `update_rate_hz` | 10.0 | 8.001 | 78 |
+| gps | UbloxM10 (standalone_3d) | `horizontal_noise_sigma_m` | 1.0 | 2.074 | 47 |
+| gps | UbloxM10 (standalone_3d) | `altitude_noise_sigma_m` | 1.8 | 2.609 | 47 |
+| gps | UbloxM10 (standalone_3d) | `velocity_noise_sigma_mps` | 0.06 | 0.328 | 37 |
+| gps | UbloxF9P (rtk_fixed) | `horizontal_noise_sigma_m` | 0.014 | 0.0141 | 359 |
+| gps | UbloxF9P (rtk_fixed) | `altitude_noise_sigma_m` | 0.02 | 0.01 | 359 |
+| gps | UbloxF9P (rtk_fixed) | `velocity_noise_sigma_mps` | 0.015 | 0.094 | 359 |
+| gps | UbloxF9P (rtk_fixed) | `update_rate_hz` | 8.0 | 5.051 | 33 |
+| gps | SeptentrioMosaic (rtk_fixed) | `horizontal_noise_sigma_m` | 0.006 | 0.01 | 11 |
+| gps | SeptentrioMosaic (rtk_fixed) | `altitude_noise_sigma_m` | 0.012 | 0.02 | 11 |
+| gps | SeptentrioMosaic (rtk_fixed) | `velocity_noise_sigma_mps` | 0.010 | 0.01457 | 11 |
+| gps | Other (standalone_3d) | `horizontal_noise_sigma_m` | 1.5 | 0.812 | 5855 |
+| gps | Other (standalone_3d) | `altitude_noise_sigma_m` | 3.0 | 1.25 | 5854 |
+| gps | Other (standalone_3d) | `velocity_noise_sigma_mps` | 0.10 | 0.1391 | 5748 |
+
+The `Other` profiles for IMU, magnetometer, barometer and GPS now hold the pooled medians above. They no longer equal `Mpu6000` (IMU) or `UbloxM8N` (GPS), which `Other` followed in 0.13.1.
+
+### New variants
+
+23 variants are new. Only the measured fields are listed; their other fields (bias sigma and tau, drift, delays and so on) are the `Other` values of 0.13.1.
+
+| Part | Variant | Field | Value | Vehicles |
+|---|---|---|---|---|
+| imu | Adis16470 | `gyro_noise_density` | 7.152e-5 | 17 |
+| imu | Adis16470 | `accel_noise_density` | 0.001139 | 17 |
+| imu | Adis16607 | `gyro_noise_density` | 0.0001231 | 10 |
+| imu | Adis16607 | `accel_noise_density` | 0.003539 | 10 |
+| imu | Bmi055 | `gyro_noise_density` | 0.0002762 | 131 |
+| imu | Bmi055 | `accel_noise_density` | 0.001395 | 131 |
+| imu | Bmi088 | `gyro_noise_density` | 0.0002713 | 392 |
+| imu | Bmi088 | `accel_noise_density` | 0.001682 | 392 |
+| imu | Icm20602 | `gyro_noise_density` | 6.602e-5 | 681 |
+| imu | Icm20602 | `accel_noise_density` | 0.0007635 | 681 |
+| imu | Icm20608g | `gyro_noise_density` | 9.93e-5 | 13 |
+| imu | Icm20608g | `accel_noise_density` | 0.002125 | 13 |
+| imu | Icm20649 | `gyro_noise_density` | 0.000185 | 28 |
+| imu | Icm20649 | `accel_noise_density` | 0.001699 | 28 |
+| imu | Icm20948 | `gyro_noise_density` | 0.0001125 | 22 |
+| imu | Icm20948 | `accel_noise_density` | 0.001322 | 22 |
+| imu | Icm42670p | `gyro_noise_density` | 5.957e-5 | 79 |
+| imu | Icm42670p | `accel_noise_density` | 0.0006262 | 79 |
+| imu | Icm42686p | `gyro_noise_density` | 7.024e-5 | 19 |
+| imu | Icm42686p | `accel_noise_density` | 0.001483 | 19 |
+| imu | Icm45686 | `gyro_noise_density` | 5.727e-5 | 259 |
+| imu | Icm45686 | `accel_noise_density` | 0.001229 | 259 |
+| imu | Iim42652 | `gyro_noise_density` | 0.0001204 | 81 |
+| imu | Iim42652 | `accel_noise_density` | 0.001308 | 81 |
+| imu | Iim42653 | `gyro_noise_density` | 0.0001228 | 31 |
+| imu | Iim42653 | `accel_noise_density` | 0.002386 | 31 |
+| imu | Mpu9250 | `gyro_noise_density` | 9.769e-5 | 31 |
+| imu | Mpu9250 | `accel_noise_density` | 0.0009651 | 31 |
+| imu | Sch16t | `gyro_noise_density` | 2.835e-5 | 61 |
+| imu | Sch16t | `accel_noise_density` | 0.0007964 | 61 |
+| baro | Bmp581 | `noise_sigma_m` | 0.02184 | 15 |
+| baro | Icp201xx | `noise_sigma_m` | 0.1903 | 117 |
+| mag | Ak09916 | `noise_sigma_gauss` | 0.009422 | 113 |
+| mag | Bmm150 | `noise_sigma_gauss` | 0.003614 | 239 |
+| mag | Bmm350 | `noise_sigma_gauss` | 0.002767 | 10 |
+| mag | Iis2mdc | `noise_sigma_gauss` | 0.003449 | 31 |
+| mag | Qmc5883p | `noise_sigma_gauss` | 0.01207 | 19 |
+| gps | Ubx7 (standalone_3d) | `horizontal_noise_sigma_m` | 2.042 | 16 |
+| gps | Ubx7 (standalone_3d) | `altitude_noise_sigma_m` | 3.373 | 16 |
+| gps | Ubx7 (standalone_3d) | `velocity_noise_sigma_mps` | 0.4266 | 16 |
+
+### Battery
+
+Per-cell internal resistance by cell count, from 842356 current steps in 35919 real logs (49 simulated logs excluded, split seed 20260623). The table now has rows for 1S to 10S and 12S to 14S; 0.13.1 had rows for 1S, 3S, 4S, 6S and 12S, and used its default of 8.3279 mohm per cell for every other cell count.
+
+| Cells | Old (0.13.1) mohm per cell | New mohm per cell | Step events (n) or fallback |
+|---|---|---|---|
+| 1S | 8.3279 | 5.5699 | n=169, fewer than 200 step events: pooled over vehicles |
+| 2S | 8.3279 (default) | 13.4364 | n=4732 |
+| 3S | 9.0889 | 8.7361 | n=13839 |
+| 4S | 9.2875 | 6.0839 | n=130805 |
+| 5S | 8.3279 (default) | 5.6962 | n=1046 |
+| 6S | 7.9288 | 3.2146 | n=441198 |
+| 7S | 8.3279 (default) | 3.3744 | n=1355 |
+| 8S | 8.3279 (default) | 3.2586 | n=21839 |
+| 9S | 8.3279 (default) | 5.5699 | n=7, fewer than 200 step events: pooled over vehicles |
+| 10S | 8.3279 (default) | 3.8934 | n=487 |
+| 12S | 8.3279 (fallback) | 2.1526 | n=195505 |
+| 13S | 8.3279 (default) | 3.7978 | n=17009 |
+| 14S | 8.3279 (default) | 2.3914 | n=14365 |
+| any other count (for example 11S) | 8.3279 (default) | 5.5699 (default) | no row; default pooled over 6380 vehicles |
+
+- The default for a cell count with no row is now 5.5699 mohm per cell, the median over vehicles (6380 vehicles), replacing 8.3279.
+- The 20-knot open-circuit voltage table was replaced. First knot (state of charge 0.025): 3.3784 V per cell before, 3.5657 now. Last knot (0.975): 4.0805 before, 4.1545 now.
+- The plausibility floor of 4 mohm per cell is gone. In 0.13.1 a class whose median fell under it (12S, 1.99 mohm) was replaced by the pooled value; 6S, 7S, 8S, 10S, 12S, 13S and 14S now ship their own measured values, all under 4 mohm per cell.
+
+Deployment notes:
+
+- The run's held-out check per cell count (median over held-out logs scored for that count) is thin for two counts: 10S has only 6 held-out logs and 7S only 11.
+- 2S and 7S under-predict sag: the median signed error (predicted minus measured voltage per cell) is +0.1240 V for 2S and +0.1226 V for 7S, about 0.12 V per cell.
+- For 12S, a comparison made in the calibration tool's review before the cell-count check was added found the old 4 mohm/cell floor slightly better than the measured median (0.0940 vs 0.0957 V per cell held-out error). This figure comes from that review, not from the published run files.
+
+### No longer true in measured data
+
+Statements that earlier tests and comments made about the part tables, and that the measured values do not support:
+
+- ICM-42688-P gyro noise is not 10x to 25x lower than MPU-6000: the measured gyro noise density is 7.997e-5 against 7.141e-5, so the ICM-42688-P is about 1.1x noisier. Its accel noise is still lower (0.001368 against 0.001504).
+- `ImuChip::Other` no longer equals `Mpu6000`: `Other` gyro is 9.572e-5 and accel 0.001274, against 7.141e-5 for `Mpu6000` gyro.
+- RM3100 is not 30x or more quieter than HMC5883: the measured ratio is about 2.2 (0.003405 gauss against 0.001544).
+- DPS310 is not the lowest-noise barometer of the older five: SPL06 measures 0.02095 m against the unmeasured DPS310 value of 0.05 m (DPS310 has no proposal and keeps 0.05).
+- Here3 no longer has the same horizontal accuracy as the M9N to within 0.01 m: Here3 keeps 0.9 m while `UbloxM9N` is now 0.8705 m (its latency is still higher, 100 ms against 80 ms).
+- `GpsChipset::Other` no longer equals `UbloxM8N` for horizontal sigma and the other measured fields: `Other` horizontal is 0.812 m against 1.198 m (`max_satellites` and `delay_ms` still match).
+
+Also, the Septentrio mosaic RTK horizontal sigma moved from 0.006 m to 0.01 m (listed in the table above); the 0.006 m figure in its code comment is stale.
+
+### Comments in the code
+
+The per-variant comments in `src/build.rs` were carried over unchanged from 0.13.1 by the generator and still quote datasheet figures. Some disagree with the measured values, for example the ICM-42688-P comment "~17x quieter than MPU6000", the "Slightly noisier than MPU6000" comment on the MPU-6500, the magnetometer figures in mGauss (RM3100 "~0.013 mGauss" against a measured 1.5 mGauss), the barometer comment "best in class" on the DPS310, and the GPS CEP figures and the M10 "similar accuracy to M9N" and Here3 "built on u-blox M9N" comments. The measured value in the code is the one used; the comment is not.
+
 ## 0.13.1 — 2026-09-04
 
 Performance only. No simulated quantity changes; the 148-test suite passes
