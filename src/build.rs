@@ -1735,9 +1735,9 @@ mod tests {
         assert_eq!(cfg.cell_count, 6);
         assert!((cfg.capacity_mah - 4500.0).abs() < 1e-9);
         assert!((cfg.discharge_rate_c - 100.0).abs() < 1e-9);
-        // R_int for 6S: canonical fitted median 7.9288 mΩ/cell × 6 cells = 47.57 mΩ
-        // (seed=20260623; previously 6 × 200/100 / 1000 = 0.012 Ω from the 200/C heuristic)
-        let expected_r = 6.0 * 7.9288 / 1000.0;
+        // R_int for 6S: deployed 3.2146 mohm/cell x 6 cells = 19.29 mohm
+        // (calibration run 2026-11-02; previously 6 x 200/100 / 1000 = 0.012 ohm from the 200/C heuristic)
+        let expected_r = 6.0 * 3.2146 / 1000.0;
         assert!(
             (cfg.internal_resistance_ohm - expected_r).abs() < 1e-6,
             "Expected R_int {expected_r:.6} Ω, got {:.6}",
@@ -1759,13 +1759,19 @@ mod tests {
         let cfg = BuildSpec::default().to_battery_config();
         let state = BatteryState::fully_charged(&cfg);
         let v_ocv = state.voltage();
-        // 80 A burst draw with default 4S: fitted R = 9.2875 mΩ/cell × 4 = 37.15 mΩ
-        // sag = 80 A × 0.03715 Ω ≈ 2.97 V (higher than old 200/C heuristic because
-        // the fitted value reflects real pack resistance, not an optimistic C-rating estimate)
+        // A 4S config built without an explicit resistance uses the run's 4S value:
+        // 6.0839 mohm/cell x 4 = 24.34 mohm.
+        let expected_r = 4.0 * 6.0839 / 1000.0;
+        assert!(
+            (cfg.internal_resistance_ohm - expected_r).abs() < 1e-9,
+            "expected 4S R_int {expected_r:.6} ohm, got {:.6}",
+            cfg.internal_resistance_ohm
+        );
+        // 80 A burst draw: sag = 80 A x 0.02434 ohm = 1.95 V
         let v_loaded = state.v_terminal(80.0, cfg.internal_resistance_ohm);
         assert!(v_loaded < v_ocv, "loaded voltage must be below OCV");
         let sag = v_ocv - v_loaded;
-        // Real-log fitted R yields 2.0–4.0 V sag at 80 A for a typical 4S pack
+        // The fitted R yields about 2 V sag at 80 A for a 4S pack
         assert!(
             sag > 1.0 && sag < 5.0,
             "expected 1–5 V sag at 80 A, got {sag}"
