@@ -785,3 +785,113 @@ fn new_variants_exist() {
     let _ = MagChip::Qmc5883p.mag_profile();
     let _ = GpsChipset::Ubx7.gps_profile();
 }
+
+/// Existing entries and fields the run proposed no value for (part-tables.json
+/// rows with a null `proposed`) keep their hitl-physics 0.13.1 literals. They
+/// are separate from `existing_variants_keep_unmeasured_fields`, which pins the
+/// fields the run has no row for (bias, drift, delay, time to first fix,
+/// satellites); this test pins the noise and rate fields that have a row but no
+/// proposal. Several of them now sit far from their measured siblings (for
+/// example the MPU-6500 gyro 9.4e-4 against 7.141e-5 for the MPU-6000), which
+/// is the specification's rule, not an oversight.
+#[test]
+fn unproposed_entries_keep_their_0_13_1_values() {
+    // Mpu6500: 9 vehicles, below the 10-vehicle threshold.
+    let p = ImuChip::Mpu6500.imu_profile();
+    assert_eq!(p.gyro_noise_density, 9.4e-4, "Mpu6500 gyro_noise_density");
+    assert_eq!(
+        p.accel_noise_density, 6.86e-3,
+        "Mpu6500 accel_noise_density"
+    );
+    // Lsm6dso: no eligible log.
+    let p = ImuChip::Lsm6dso.imu_profile();
+    assert_eq!(p.gyro_noise_density, 6.11e-5, "Lsm6dso gyro_noise_density");
+    assert_eq!(
+        p.accel_noise_density, 5.88e-4,
+        "Lsm6dso accel_noise_density"
+    );
+    // Bmp280: too few logs pass the white-noise check. Dps310: likewise.
+    assert_eq!(
+        BaroChip::Bmp280.baro_profile().noise_sigma_m,
+        0.16,
+        "Bmp280 noise_sigma_m"
+    );
+    assert_eq!(
+        BaroChip::Dps310.baro_profile().noise_sigma_m,
+        0.05,
+        "Dps310 noise_sigma_m"
+    );
+    // UbloxM10 update rate: 6 vehicles, below the threshold. Septentrio: no
+    // eligible log.
+    assert_eq!(
+        GpsChipset::UbloxM10.gps_profile().update_rate_hz,
+        10.0,
+        "UbloxM10 update_rate_hz"
+    );
+    assert_eq!(
+        GpsChipset::SeptentrioMosaic.gps_profile().update_rate_hz,
+        100.0,
+        "SeptentrioMosaic update_rate_hz"
+    );
+    // Here3: no eligible log for any of its four measured fields.
+    let p = GpsChipset::Here3.gps_profile();
+    assert_eq!(p.horizontal_noise_sigma_m, 0.9, "Here3 horizontal");
+    assert_eq!(p.altitude_noise_sigma_m, 1.5, "Here3 altitude");
+    assert_eq!(p.velocity_noise_sigma_mps, 0.05, "Here3 velocity");
+    assert_eq!(p.update_rate_hz, 8.0, "Here3 update_rate_hz");
+}
+
+/// A new variant takes the same type's `Other` value for every field the run
+/// proposed no value for it. The IMU variants are measured for the two noise
+/// densities only, so the bias sigma and time constant come from `Other`; the
+/// new barometer and magnetometer variants are measured for their one field, so
+/// nothing is inherited there. `Ubx7` is measured for the three GPS sigmas and
+/// inherits the update rate and every other field.
+#[test]
+fn new_variants_take_other_for_unmeasured_fields() {
+    let other = ImuChip::Other.imu_profile();
+    for chip in [
+        ImuChip::Adis16470,
+        ImuChip::Adis16607,
+        ImuChip::Bmi055,
+        ImuChip::Bmi088,
+        ImuChip::Icm20602,
+        ImuChip::Icm20608g,
+        ImuChip::Icm20649,
+        ImuChip::Icm20948,
+        ImuChip::Icm42670p,
+        ImuChip::Icm42686p,
+        ImuChip::Icm45686,
+        ImuChip::Iim42652,
+        ImuChip::Iim42653,
+        ImuChip::Mpu9250,
+        ImuChip::Sch16t,
+    ] {
+        let p = chip.imu_profile();
+        let n = format!("{chip:?}");
+        assert_eq!(p.gyro_bias_sigma, other.gyro_bias_sigma, "{n} bias sigma");
+        assert_eq!(p.gyro_bias_tau, other.gyro_bias_tau, "{n} bias tau");
+    }
+    let other = GpsChipset::Other.gps_profile();
+    let p = GpsChipset::Ubx7.gps_profile();
+    assert_eq!(
+        p.update_rate_hz, other.update_rate_hz,
+        "Ubx7 update_rate_hz"
+    );
+    assert_eq!(
+        p.position_drift_sigma, other.position_drift_sigma,
+        "Ubx7 position_drift_sigma"
+    );
+    assert_eq!(
+        p.position_drift_tau, other.position_drift_tau,
+        "Ubx7 position_drift_tau"
+    );
+    assert_eq!(p.delay_ms, other.delay_ms, "Ubx7 delay_ms");
+    assert_eq!(p.ttff_cold_s, other.ttff_cold_s, "Ubx7 ttff_cold_s");
+    assert_eq!(p.ttff_warm_s, other.ttff_warm_s, "Ubx7 ttff_warm_s");
+    assert_eq!(p.ttff_hot_s, other.ttff_hot_s, "Ubx7 ttff_hot_s");
+    assert_eq!(
+        p.max_satellites, other.max_satellites,
+        "Ubx7 max_satellites"
+    );
+}
