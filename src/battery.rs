@@ -358,6 +358,37 @@ mod tests {
     }
 
     #[test]
+    fn ocv_table_comes_from_the_run() {
+        // (state of charge, V/cell) knots from the calibration run 2026-11-02.
+        let expected: [(f64, f64); 20] = [
+            (0.0250, 3.5657),
+            (0.0750, 3.6235),
+            (0.1250, 3.6420),
+            (0.1750, 3.6789),
+            (0.2250, 3.7649),
+            (0.2750, 3.7649),
+            (0.3250, 3.7649),
+            (0.3750, 3.7953),
+            (0.4250, 3.7953),
+            (0.4750, 3.7953),
+            (0.5250, 3.8045),
+            (0.5750, 3.8045),
+            (0.6250, 3.8495),
+            (0.6750, 3.8990),
+            (0.7250, 3.9765),
+            (0.7750, 3.9765),
+            (0.8250, 3.9990),
+            (0.8750, 4.0760),
+            (0.9250, 4.0992),
+            (0.9750, 4.1545),
+        ];
+        assert_eq!(OCV_TABLE.len(), expected.len());
+        for (i, (got, want)) in OCV_TABLE.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(got, want, "OCV_TABLE knot {i}");
+        }
+    }
+
+    #[test]
     fn four_cell_config_without_explicit_resistance_uses_the_run_value() {
         let config = BatteryConfig::new(4, 1500.0, 75.0);
         assert!((config.internal_resistance_ohm - 6.0839 * 4.0 / 1000.0).abs() < 1e-12);

@@ -15,16 +15,18 @@ fn assert_good(name: &str, v: f64) {
 }
 
 /// The profile field equals the generated literal, and the literal is the
-/// run's proposed value to within four-digit rounding (relative 5e-4).
+/// run's proposed value rounded to four significant digits, exactly (the
+/// generator formats with Python `format(value, '.4g')`; Rust `{:.3e}` is the
+/// same four-digit rounding of the shortest round-trip decimal).
 fn check_row(row: &str, actual: f64, literal: f64, proposed: f64) {
     assert_eq!(
         actual, literal,
         "{row}: profile value differs from the generated literal"
     );
-    let rel = ((literal - proposed) / proposed).abs();
-    assert!(
-        rel <= 5e-4,
-        "{row}: literal {literal} is {rel:e} from proposed {proposed}"
+    let rounded: f64 = format!("{proposed:.3e}").parse().unwrap();
+    assert_eq!(
+        literal, rounded,
+        "{row}: literal {literal} is not proposed {proposed} rounded to four significant digits ({rounded})"
     );
 }
 
@@ -254,6 +256,42 @@ fn existing_variants_keep_unmeasured_fields() {
         ),
         (0.04, 40.0, 100.0, 24.0, 2.0, 1.0, 33),
         "Here3"
+    );
+    // In 0.13.1 `Other` delegated to Mpu6000 and UbloxM8N, so the unmeasured
+    // fields of `Other` hold those 0.13.1 values.
+    let p = ImuChip::Other.imu_profile();
+    assert_eq!(
+        (p.gyro_bias_sigma, p.gyro_bias_tau),
+        (1e-4, 100.0),
+        "ImuChip::Other"
+    );
+    let p = GpsChipset::Other.gps_profile();
+    assert_eq!(
+        (
+            p.position_drift_sigma,
+            p.position_drift_tau,
+            p.delay_ms,
+            p.ttff_cold_s,
+            p.ttff_warm_s,
+            p.ttff_hot_s,
+            p.max_satellites
+        ),
+        (0.06, 30.0, 120.0, 26.0, 5.0, 1.0, 22),
+        "GpsChipset::Other"
+    );
+}
+
+/// The specification scenario: `ImuChip::Other` is its own measured entry and
+/// no longer equals the MPU-6000 value it delegated to in 0.13.1.
+#[test]
+fn imu_other_no_longer_equals_mpu6000() {
+    assert_ne!(
+        ImuChip::Other.imu_profile().gyro_noise_density,
+        ImuChip::Mpu6000.imu_profile().gyro_noise_density
+    );
+    assert_ne!(
+        ImuChip::Other.imu_profile().accel_noise_density,
+        ImuChip::Mpu6000.imu_profile().accel_noise_density
     );
 }
 
@@ -759,31 +797,70 @@ fn run_values_are_used() {
     );
 }
 
+/// Every new variant is its own arm: each new magnetometer has a profile, and
+/// at least one measured field of every new variant differs from the same field
+/// of that type's `Other` (so none falls through to `Other`).
 #[test]
 fn new_variants_exist() {
-    let _ = ImuChip::Adis16470.imu_profile();
-    let _ = ImuChip::Adis16607.imu_profile();
-    let _ = ImuChip::Bmi055.imu_profile();
-    let _ = ImuChip::Bmi088.imu_profile();
-    let _ = ImuChip::Icm20602.imu_profile();
-    let _ = ImuChip::Icm20608g.imu_profile();
-    let _ = ImuChip::Icm20649.imu_profile();
-    let _ = ImuChip::Icm20948.imu_profile();
-    let _ = ImuChip::Icm42670p.imu_profile();
-    let _ = ImuChip::Icm42686p.imu_profile();
-    let _ = ImuChip::Icm45686.imu_profile();
-    let _ = ImuChip::Iim42652.imu_profile();
-    let _ = ImuChip::Iim42653.imu_profile();
-    let _ = ImuChip::Mpu9250.imu_profile();
-    let _ = ImuChip::Sch16t.imu_profile();
-    let _ = BaroChip::Bmp581.baro_profile();
-    let _ = BaroChip::Icp201xx.baro_profile();
-    let _ = MagChip::Ak09916.mag_profile();
-    let _ = MagChip::Bmm150.mag_profile();
-    let _ = MagChip::Bmm350.mag_profile();
-    let _ = MagChip::Iis2mdc.mag_profile();
-    let _ = MagChip::Qmc5883p.mag_profile();
-    let _ = GpsChipset::Ubx7.gps_profile();
+    let other = ImuChip::Other.imu_profile();
+    for chip in [
+        ImuChip::Adis16470,
+        ImuChip::Adis16607,
+        ImuChip::Bmi055,
+        ImuChip::Bmi088,
+        ImuChip::Icm20602,
+        ImuChip::Icm20608g,
+        ImuChip::Icm20649,
+        ImuChip::Icm20948,
+        ImuChip::Icm42670p,
+        ImuChip::Icm42686p,
+        ImuChip::Icm45686,
+        ImuChip::Iim42652,
+        ImuChip::Iim42653,
+        ImuChip::Mpu9250,
+        ImuChip::Sch16t,
+    ] {
+        let p = chip.imu_profile();
+        assert!(
+            p.gyro_noise_density != other.gyro_noise_density
+                || p.accel_noise_density != other.accel_noise_density,
+            "{chip:?} has the same measured IMU fields as Other"
+        );
+    }
+    let other = BaroChip::Other.baro_profile();
+    for chip in [BaroChip::Bmp581, BaroChip::Icp201xx] {
+        assert_ne!(
+            chip.baro_profile().noise_sigma_m,
+            other.noise_sigma_m,
+            "{chip:?} has the same noise_sigma_m as Other"
+        );
+    }
+    let other = MagChip::Other
+        .mag_profile()
+        .expect("MagChip::Other has a profile");
+    for chip in [
+        MagChip::Ak09916,
+        MagChip::Bmm150,
+        MagChip::Bmm350,
+        MagChip::Iis2mdc,
+        MagChip::Qmc5883p,
+    ] {
+        let p = chip
+            .mag_profile()
+            .unwrap_or_else(|| panic!("{chip:?} has no mag profile"));
+        assert_ne!(
+            p.noise_sigma_gauss, other.noise_sigma_gauss,
+            "{chip:?} has the same noise_sigma_gauss as Other"
+        );
+    }
+    let other = GpsChipset::Other.gps_profile();
+    let p = GpsChipset::Ubx7.gps_profile();
+    assert!(
+        p.horizontal_noise_sigma_m != other.horizontal_noise_sigma_m
+            || p.altitude_noise_sigma_m != other.altitude_noise_sigma_m
+            || p.velocity_noise_sigma_mps != other.velocity_noise_sigma_mps,
+        "Ubx7 has the same measured GPS fields as Other"
+    );
 }
 
 /// Existing entries and fields the run proposed no value for (part-tables.json
@@ -841,12 +918,16 @@ fn unproposed_entries_keep_their_0_13_1_values() {
     assert_eq!(p.update_rate_hz, 8.0, "Here3 update_rate_hz");
 }
 
-/// A new variant takes the same type's `Other` value for every field the run
-/// proposed no value for it. The IMU variants are measured for the two noise
-/// densities only, so the bias sigma and time constant come from `Other`; the
-/// new barometer and magnetometer variants are measured for their one field, so
-/// nothing is inherited there. `Ubx7` is measured for the three GPS sigmas and
-/// inherits the update rate and every other field.
+/// A new variant takes the hitl-physics 0.13.1 `Other` value for every field
+/// the run proposed no value for it (the generator builds new variants from the
+/// 0.13.1 `Other` baseline). The IMU variants are measured for the two noise
+/// densities only, so the bias sigma and time constant come from `Other`; those
+/// are identical in 0.13.1 and 0.14.0 (as are the GPS drift, delay, time to
+/// first fix and satellite fields). The new barometer and magnetometer variants
+/// are measured for their one field, so nothing is inherited there. `Ubx7` is
+/// measured for the three GPS sigmas but has no update-rate proposal, so its
+/// update rate is the 0.13.1 `Other` literal (5.0), not the 0.14.0 `Other`
+/// value.
 #[test]
 fn new_variants_take_other_for_unmeasured_fields() {
     let other = ImuChip::Other.imu_profile();
@@ -874,10 +955,8 @@ fn new_variants_take_other_for_unmeasured_fields() {
     }
     let other = GpsChipset::Other.gps_profile();
     let p = GpsChipset::Ubx7.gps_profile();
-    assert_eq!(
-        p.update_rate_hz, other.update_rate_hz,
-        "Ubx7 update_rate_hz"
-    );
+    // 0.13.1 `Other` (u-blox M8N baseline) update rate.
+    assert_eq!(p.update_rate_hz, 5.0, "Ubx7 update_rate_hz");
     assert_eq!(
         p.position_drift_sigma, other.position_drift_sigma,
         "Ubx7 position_drift_sigma"
