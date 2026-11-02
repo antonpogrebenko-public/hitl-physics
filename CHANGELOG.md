@@ -122,14 +122,40 @@ Per-cell internal resistance by cell count, from 842356 current steps. The steps
 | any other count (for example 11S) | 8.3279 (default) | 5.5699 (default) | no row; default pooled over 6380 vehicles |
 
 - The default for a cell count with no row is now 5.5699 mohm per cell, the median over vehicles (6380 vehicles), replacing 8.3279.
-- The 20-knot open-circuit voltage table was replaced. First knot (state of charge 0.025): 3.3784 V per cell before, 3.5657 now. Last knot (0.975): 4.0805 before, 4.1545 now.
+- The 20-knot open-circuit voltage table was replaced. First knot (state of charge 0.025): 3.3784 V per cell before, 3.5657 now. Last knot (0.975): 4.0805 before, 4.1545 now. Every knot is in the table below.
 - The plausibility floor of 4 mohm per cell is gone. In 0.13.1 a class whose median fell under it (12S, 1.99 mohm) was replaced by the pooled value; 6S, 7S, 8S, 10S, 12S, 13S and 14S now ship their own measured values, all under 4 mohm per cell.
+
+Open-circuit voltage table, V per cell by state of charge (bin centre), old (0.13.1) and new:
+
+| State of charge | Old (0.13.1) | New |
+|---|---|---|
+| 0.025 | 3.3784 | 3.5657 |
+| 0.075 | 3.5724 | 3.6235 |
+| 0.125 | 3.5724 | 3.6420 |
+| 0.175 | 3.6721 | 3.6789 |
+| 0.225 | 3.7079 | 3.7649 |
+| 0.275 | 3.7079 | 3.7649 |
+| 0.325 | 3.7079 | 3.7649 |
+| 0.375 | 3.7228 | 3.7953 |
+| 0.425 | 3.7241 | 3.7953 |
+| 0.475 | 3.7379 | 3.7953 |
+| 0.525 | 3.7424 | 3.8045 |
+| 0.575 | 3.7864 | 3.8045 |
+| 0.625 | 3.8196 | 3.8495 |
+| 0.675 | 3.8388 | 3.8990 |
+| 0.725 | 3.8388 | 3.9765 |
+| 0.775 | 3.8875 | 3.9765 |
+| 0.825 | 3.8955 | 3.9990 |
+| 0.875 | 3.9185 | 4.0760 |
+| 0.925 | 3.9794 | 4.0992 |
+| 0.975 | 4.0805 | 4.1545 |
 
 Deployment notes:
 
-- The run's held-out check per cell count (median over held-out logs scored for that count) is thin for two counts: 10S has only 6 held-out logs and 7S only 11. 10S is also the worst cell count: its median signed error (predicted minus measured voltage per cell) is +0.3524 V per cell over those 6 logs, so 10S packs under-predict sag by about 0.35 V per cell.
+- The run's held-out check per cell count (median over held-out logs scored for that count) is thin for two counts: 10S has only 6 held-out logs and 7S only 11. 10S is also the worst cell count: its median signed error (predicted minus measured voltage per cell) is +0.3524 V per cell over those 6 logs. Per the report, a positive signed error means that the model predicts less sag than the packs show, or that the open-circuit curve sits above these packs. The run does not say which, so the 0.35 V per cell may be missing sag, a curve that sits too high for these packs, or a mix.
+- 1S and 9S (the pooled fallback, 5.5699 mohm per cell) have no scored held-out logs: the report's held-out table and `holdout_by_cell_count` in battery-fit.json have no 1S or 9S row, so those two values had no held-out check.
 - The fallback is not monotone in cell count. 1S, 9S (both under 200 step events), 11S, and 15S and above use the pooled 5.5699 mohm per cell, while 8S is 3.2586, 10S 3.8934 and 12S 2.1526. An 11S pack therefore gets about 2.6x the resistance per cell of a 12S pack (5.5699 against 2.1526), about 2.4x in total (61.3 mohm against 25.8 mohm).
-- 2S and 7S under-predict sag: the median signed error (predicted minus measured voltage per cell) is +0.1240 V for 2S and +0.1226 V for 7S, about 0.12 V per cell.
+- 2S and 7S also have a positive median signed error (predicted minus measured voltage per cell): +0.1240 V for 2S and +0.1226 V for 7S, about 0.12 V per cell. As for 10S, the run does not say whether the model predicts less sag than these packs show or the open-circuit curve sits above them.
 - For 12S, a comparison made in the calibration tool's review before the cell-count check was added found the old 4 mohm/cell floor slightly better than the measured median (0.0940 vs 0.0957 V per cell held-out error). This figure comes from that review, not from the published run files.
 
 ### Read before deploying
@@ -139,7 +165,7 @@ IMU noise is at rest, not in flight. The IMU densities are medians of the noise 
 What the other values measure:
 
 - GPS rows: the `measurement` fields are `gps.eph_median_m`, `gps.epv_median_m`, `gps.speed_accuracy_median_m_s` and `gps.update_rate_hz`: medians over vehicles of the logged horizontal accuracy (eph), vertical accuracy (epv), speed accuracy and update rate, for the fix class named in the table (`standalone_3d` or `rtk_fixed`).
-- Barometer and magnetometer sigmas: the run's rules are an Allan slope within 0.15 of -0.5 and simulator rates of 50.0 Hz for both. A value is scaled by sqrt(simulator rate / logged rate) only when the log is at the simulator rate or above; below it the logged value is kept (the report: a series logged below the simulator rate holds samples at the driver's own, unknown rate). For all 17 proposed barometer and magnetometer rows the median factor is 1; the median logged rate is about 1 Hz for 16 of them and 10.36 Hz for `Spl06`. So these sigmas are per-sample values at the logged rate, not values at the 50 Hz the simulator runs these sensors at.
+- Barometer and magnetometer sigmas: the run's rules are an Allan slope within 0.15 of -0.5 and simulator rates of 50.0 Hz for both. A value is scaled by sqrt(simulator rate / logged rate) only when the log is at the simulator rate or above; below it the logged value is kept (the th3seus-tools log_validation README: the PX4 logger keeps one sample per interval instead of averaging, so a series logged below the simulator rate holds samples at the driver's own, unknown rate). For all 17 proposed barometer and magnetometer rows the median factor is 1; the median logged rate is about 1 Hz for 16 of them and 10.36 Hz for `Spl06`. So each sigma is the per-sample noise of samples taken at the driver's own, unknown rate and logged at about 1 Hz (10.36 Hz for `Spl06`). It is not scaled to the 50 Hz the simulator runs these sensors at, and its relation to that rate is unknown, so do not rescale it by sqrt(50/1) or any other factor.
 
 Entries the run did not measure keep their 0.13.1 values (the rule is at least 10 vehicles per proposed value) and now sit far from their measured siblings. They are candidates for a later run:
 
@@ -150,7 +176,7 @@ Entries the run did not measure keep their 0.13.1 values (the rule is at least 1
 
 ### Breaking change
 
-`ImuChip`, `BaroChip`, `MagChip` and `GpsChipset` gain variants (23 in all), which breaks an exhaustive `match` on any of them in a dependent crate. hitl-daemon has none on these enums: it builds them from strings with `_` arms.
+`ImuChip`, `BaroChip`, `MagChip` and `GpsChipset` gain variants (23 in all), which breaks an exhaustive `match` on any of them in a dependent crate. hitl-daemon has none on these enums: it builds them from strings with `_` arms. Those `_` arms send every new chip string to `Other` until the daemon gets the generated parser arms (`rust/daemon_aliases.rs` in the run's directory in th3seus-tools, for hitl-daemon 0.27.0); without them the new measured profiles are not selected.
 
 ### No longer true in measured data
 
@@ -167,9 +193,9 @@ Also, the Septentrio mosaic RTK horizontal sigma moved from 0.006 m to 0.01 m (l
 
 ### Comments in the code
 
-The per-variant comments in `src/build.rs` were carried over unchanged from 0.13.1 by the generator and still quote datasheet figures. Some disagree with the measured values, for example the ICM-42688-P comment "~17x quieter than MPU6000", the "Slightly noisier than MPU6000" comment on the MPU-6500, the magnetometer figures in mGauss (RM3100 "~0.013 mGauss" against a measured 1.5 mGauss), the barometer comment "best in class" on the DPS310, and the GPS CEP figures and the M10 "similar accuracy to M9N" and Here3 "built on u-blox M9N" comments. The measured value in the code is the one used; the comment is not.
+The per-variant comments in `src/build.rs` were carried over from 0.13.1 (converted to ASCII, some moved; wording unchanged) and still quote datasheet figures. Some disagree with the measured values, for example the ICM-42688-P comment "~17x quieter than MPU6000", the "Slightly noisier than MPU6000" comment on the MPU-6500, the magnetometer figures in mGauss (RM3100 "~0.013 mGauss" against a measured 1.5 mGauss), the barometer comment "best in class" on the DPS310, and the GPS CEP figures and the M10 "similar accuracy to M9N" and Here3 "built on u-blox M9N" comments. The measured value in the code is the one used; the comment is not.
 
-The four generated `///` doc lines that rustdoc shows still say "Datasheet-derived ...": on `imu_profile`, `mag_profile`, `baro_profile` and `gps_profile`. They are wrong for every measured value. The accurate provenance of each measured value is the generated comment above it, "was X (hitl-physics 0.13.1); median of N vehicles, run 2026-11-02". The hand-written docs of `ImuProfile`, `MagProfile`, `BaroProfile`, `GpsProfile` and `to_sensor_profiles` were corrected.
+The four generated `///` doc lines that rustdoc shows still say "Datasheet-derived ...": on `imu_profile`, `mag_profile`, `baro_profile` and `gps_profile`. They are wrong for every measured value. The accurate provenance of each measured value is the generated comment above it: existing variants carry "was X (hitl-physics 0.13.1); median of N vehicles, run 2026-11-02", and the 23 new variants carry "was X (Other); median of N vehicles, run 2026-11-02". The hand-written docs of `ImuProfile`, `MagProfile`, `BaroProfile`, `GpsProfile` and `to_sensor_profiles` were corrected.
 
 ## 0.13.1 — 2026-09-04
 
