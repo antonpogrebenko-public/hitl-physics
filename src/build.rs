@@ -248,14 +248,17 @@ pub enum ImuChip {
 }
 
 impl ImuChip {
-    /// Datasheet-derived noise profile for this IMU chipset.
+    /// Noise profile for this IMU chipset.
     ///
-    /// Sources: InvenSense MPU-6000/6500/ICM-20689/ICM-42688P datasheets;
+    /// A value with a "was" comment is the median over vehicles measured from real PX4 logs in
+    /// run 2026-11-02; every other value is the hitl-physics 0.13.1 table value.
+    ///
+    /// hitl-physics 0.13.1 sources: InvenSense MPU-6000/6500/ICM-20689/ICM-42688P datasheets;
     /// Bosch BMI270; STMicroelectronics LSM6DSO. Bias drift values are
     /// empirical from PX4 EKF2 tuning recommendations.
     pub fn imu_profile(&self) -> ImuProfile {
         match self {
-            // 0.05 deg/s/sqrt(Hz), 650 ug/sqrt(Hz) - legacy reference, used in tests
+            // used in tests
             ImuChip::Mpu6000 => ImuProfile {
                 // was 8.726646e-4 (hitl-physics 0.13.1); median of 70 vehicles, run 2026-11-02
                 gyro_noise_density: 7.141e-5,
@@ -264,14 +267,12 @@ impl ImuChip {
                 gyro_bias_sigma: 1e-4,
                 gyro_bias_tau: 100.0,
             },
-            // Slightly noisier than MPU6000
             ImuChip::Mpu6500 => ImuProfile {
                 gyro_noise_density: 9.4e-4,
                 accel_noise_density: 6.86e-3,
                 gyro_bias_sigma: 1e-4,
                 gyro_bias_tau: 100.0,
             },
-            // 0.005 deg/s/sqrt(Hz), 80 ug/sqrt(Hz)
             ImuChip::Icm20689 => ImuProfile {
                 // was 8.73e-5 (hitl-physics 0.13.1); median of 149 vehicles, run 2026-11-02
                 gyro_noise_density: 9.295e-5,
@@ -280,7 +281,7 @@ impl ImuChip {
                 gyro_bias_sigma: 5e-5,
                 gyro_bias_tau: 200.0,
             },
-            // 0.0028 deg/s/sqrt(Hz), 70 ug/sqrt(Hz) - modern flagship, ~17x quieter than MPU6000
+            // modern flagship
             ImuChip::Icm42688p => ImuProfile {
                 // was 4.88e-5 (hitl-physics 0.13.1); median of 373 vehicles, run 2026-11-02
                 gyro_noise_density: 7.997e-5,
@@ -289,7 +290,6 @@ impl ImuChip {
                 gyro_bias_sigma: 5e-5,
                 gyro_bias_tau: 200.0,
             },
-            // 0.008 deg/s/sqrt(Hz), 250 ug/sqrt(Hz)
             ImuChip::Bmi270 => ImuProfile {
                 // was 1.40e-4 (hitl-physics 0.13.1); median of 33 vehicles, run 2026-11-02
                 gyro_noise_density: 0.0001092,
@@ -475,30 +475,29 @@ pub enum MagChip {
 }
 
 impl MagChip {
-    /// Datasheet-derived noise profile, or `None` for a build without a mag.
+    /// Noise profile, or `None` for a build without a mag.
+    ///
+    /// A value with a "was" comment is the median over vehicles measured from real PX4 logs in
+    /// run 2026-11-02; every other value is the hitl-physics 0.13.1 table value.
     pub fn mag_profile(&self) -> Option<MagProfile> {
         match self {
-            // ~0.6 mGauss noise
             MagChip::Hmc5883 => Some(MagProfile {
                 // was 0.0006 (hitl-physics 0.13.1); median of 15 vehicles, run 2026-11-02
                 noise_sigma_gauss: 0.003405,
             }),
-            // ~0.5 mGauss; cheap, temperature-unstable
+            // cheap, temperature-unstable
             MagChip::Qmc5883 => Some(MagProfile {
                 // was 0.0005 (hitl-physics 0.13.1); median of 98 vehicles, run 2026-11-02
                 noise_sigma_gauss: 0.003216,
             }),
-            // ~0.3 mGauss
             MagChip::Ist8310 => Some(MagProfile {
                 // was 0.0003 (hitl-physics 0.13.1); median of 410 vehicles, run 2026-11-02
                 noise_sigma_gauss: 0.002705,
             }),
-            // ~0.013 mGauss - high-performance fluxgate-class
             MagChip::Rm3100 => Some(MagProfile {
                 // was 0.000013 (hitl-physics 0.13.1); median of 104 vehicles, run 2026-11-02
                 noise_sigma_gauss: 0.001544,
             }),
-            // ~0.32 mGauss
             MagChip::Lis3mdl => Some(MagProfile {
                 // was 0.00032 (hitl-physics 0.13.1); median of 26 vehicles, run 2026-11-02
                 noise_sigma_gauss: 0.008952,
@@ -556,7 +555,10 @@ pub enum BaroChip {
 }
 
 impl BaroChip {
-    /// Datasheet-derived altitude noise standard deviation.
+    /// Altitude noise standard deviation.
+    ///
+    /// A value with a "was" comment is the median over vehicles measured from real PX4 logs in
+    /// run 2026-11-02; every other value is the hitl-physics 0.13.1 table value.
     pub fn baro_profile(&self) -> BaroProfile {
         match self {
             BaroChip::Bmp280 => BaroProfile {
@@ -566,7 +568,6 @@ impl BaroChip {
                 // was 0.08 (hitl-physics 0.13.1); median of 78 vehicles, run 2026-11-02
                 noise_sigma_m: 0.1059,
             },
-            // best in class
             BaroChip::Dps310 => BaroProfile {
                 noise_sigma_m: 0.05,
             },
@@ -630,15 +631,18 @@ pub enum GpsChipset {
 }
 
 impl GpsChipset {
-    /// Datasheet-derived GPS receiver profile.
+    /// GPS receiver profile.
     ///
-    /// Sources: u-blox M8/M9/M10/F9P product summaries; Septentrio Mosaic-X5
+    /// A value with a "was" comment is the median over vehicles measured from real PX4 logs in
+    /// run 2026-11-02; every other value is the hitl-physics 0.13.1 table value.
+    ///
+    /// hitl-physics 0.13.1 sources: u-blox M8/M9/M10/F9P product summaries; Septentrio Mosaic-X5
     /// brochure; Here3 (CubePilot) docs. CEP values are typical autonomous
     /// performance - RTK figures are post-base-station-correction (F9P,
     /// Mosaic). TTFF values are from the respective product specs.
     pub fn gps_profile(&self) -> GpsProfile {
         match self {
-            // u-blox NEO-M8N: 2.5 m CEP, 18 Hz max (5 Hz default), GPS+GLONASS
+            // u-blox NEO-M8N; GPS+GLONASS; measured over standalone 3D fixes
             GpsChipset::UbloxM8N => GpsProfile {
                 // was 1.5 (hitl-physics 0.13.1); median of 302 vehicles, run 2026-11-02
                 horizontal_noise_sigma_m: 1.198,
@@ -656,7 +660,7 @@ impl GpsChipset {
                 ttff_hot_s: 1.0,
                 max_satellites: 22,
             },
-            // u-blox NEO-M9N: 1.5 m CEP, 25 Hz max, 4-constellation
+            // u-blox NEO-M9N; 4-constellation; measured over standalone 3D fixes
             GpsChipset::UbloxM9N => GpsProfile {
                 // was 0.9 (hitl-physics 0.13.1); median of 1100 vehicles, run 2026-11-02
                 horizontal_noise_sigma_m: 0.8705,
@@ -674,7 +678,7 @@ impl GpsChipset {
                 ttff_hot_s: 1.0,
                 max_satellites: 33,
             },
-            // u-blox M10: similar accuracy to M9N, lower power, single-band
+            // u-blox M10; single-band; measured over standalone 3D fixes
             GpsChipset::UbloxM10 => GpsProfile {
                 // was 1.0 (hitl-physics 0.13.1); median of 47 vehicles, run 2026-11-02
                 horizontal_noise_sigma_m: 2.074,
@@ -691,7 +695,7 @@ impl GpsChipset {
                 ttff_hot_s: 1.0,
                 max_satellites: 32,
             },
-            // u-blox ZED-F9P: 0.01 m RTK fixed, 1.5 m standalone, 8 Hz typical
+            // u-blox ZED-F9P; measured over RTK fixed solutions
             GpsChipset::UbloxF9P => GpsProfile {
                 // was 0.014 (hitl-physics 0.13.1); median of 359 vehicles, run 2026-11-02
                 horizontal_noise_sigma_m: 0.0141,
@@ -709,7 +713,7 @@ impl GpsChipset {
                 ttff_hot_s: 1.0,
                 max_satellites: 60,
             },
-            // Septentrio Mosaic-X5: 0.006 m RTK, 100 Hz, survey-grade
+            // Septentrio Mosaic-X5; 100 Hz; survey-grade; measured over RTK fixed solutions
             GpsChipset::SeptentrioMosaic => GpsProfile {
                 // was 0.006 (hitl-physics 0.13.1); median of 11 vehicles, run 2026-11-02
                 horizontal_noise_sigma_m: 0.01,
@@ -740,7 +744,7 @@ impl GpsChipset {
                 ttff_hot_s: 1.0,
                 max_satellites: 33,
             },
-            // PX4 log names UBX_7; new in run 2026-11-02
+            // PX4 log names UBX_7; new in run 2026-11-02; measured over standalone 3D fixes
             GpsChipset::Ubx7 => GpsProfile {
                 // was 1.5 (Other); median of 16 vehicles, run 2026-11-02
                 horizontal_noise_sigma_m: 2.042,
