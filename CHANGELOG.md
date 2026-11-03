@@ -194,10 +194,10 @@ Statements that earlier tests and comments made about the part tables, and that 
 In the four generated sections of `src/build.rs` (`ImuChip`, `MagChip`, `BaroChip` and `GpsChipset`), the arm comments of the variants that existed in 0.13.1, other than `Other`, are built from their 0.13.1 comments by one rule:
 
 - What a 0.13.1 comment says about the part itself is kept, for example "u-blox ZED-F9P", "single-band" or "cheap, temperature-unstable".
-- A 0.13.1 figure is kept only while no field it describes has a measured value. A re-measured field counts even when its value did not change, so the M8N's "18 Hz max (5 Hz default)" is gone although its `update_rate_hz` is still 5.0.
+- A 0.13.1 figure, or a note about the 0.13.1 values such as the MPU-6000's "legacy reference", is kept only while no field it describes has a measured value. A re-measured field counts even when its value did not change, so the M8N's "18 Hz max (5 Hz default)" is gone although its `update_rate_hz` is still 5.0.
 - A claim that compares the part with another is dropped. The ICM-42688-P comment is now "modern flagship", without "~17x quieter than MPU6000", and the DPS310 and MPU-6500 arms have no comment, because "best in class" and "Slightly noisier than MPU6000" were their whole comments.
 
-A comment with nothing dropped keeps its 0.13.1 wording, converted to ASCII. The one 0.13.1 field comment in these sections, "CAN bus latency" on the Here3 `delay_ms`, is now part of the Here3 arm comment as "delay_ms 100.0 is CAN bus latency". th3seus-tools classifies each 0.13.1 phrase in `log_validation/part_notes.py`, and it does not generate a section whose 0.13.1 comments hold a phrase it has not classified.
+A comment with nothing dropped keeps its 0.13.1 wording, converted to ASCII. The one 0.13.1 field comment in these sections, "CAN bus latency" on the Here3 `delay_ms`, is now part of the Here3 arm comment as "delay_ms 100.0 is CAN bus latency". th3seus-tools classifies each phrase of these 0.13.1 arm comments (every variant but `Other`) in `log_validation/part_notes.py`, and it does not generate a section where one of them holds a phrase it has not classified.
 
 The 23 new variants carry "PX4 log names X; new in run 2026-11-02", and each `Other` arm says it is the median over all vehicles of its part type. Every GPS arm with a measured value names the fix class of its medians: the named receivers end with "measured over standalone 3D fixes" or "measured over RTK fixed solutions", and the `Other` comment says "standalone 3D fix only".
 
