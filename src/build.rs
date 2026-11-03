@@ -183,7 +183,7 @@ pub struct SensorProfiles {
 /// measured on public PX4 flight logs (calibration run 2026-11-02) where that
 /// run proposed a value for the variant. The fix class of the measured values
 /// is rtk_fixed for UbloxF9P and SeptentrioMosaic, and standalone_3d for
-/// UbloxM8N, UbloxM9N, UbloxM10, Ubx7 and Other. Here3, Ubx6 and Ubx20 have no
+/// UbloxM8N, UbloxM9N, UbloxM10, Ubx7 and Other. Here3 has no
 /// proposal. Every other field, and every field or variant without a proposal,
 /// keeps its hitl-physics 0.13.1 table value.
 #[derive(Debug, Clone, Copy)]
