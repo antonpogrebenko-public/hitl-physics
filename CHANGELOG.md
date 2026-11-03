@@ -189,13 +189,18 @@ Statements that earlier tests and comments made about the part tables, and that 
 - Here3 no longer has the same horizontal accuracy as the M9N to within 0.01 m: Here3 keeps 0.9 m while `UbloxM9N` is now 0.8705 m (its latency is still higher, 100 ms against 80 ms).
 - `GpsChipset::Other` no longer equals `UbloxM8N` for the three noise sigmas: `Other` horizontal is 0.812 m against 1.198 m, altitude 1.25 m against 1.87 m, velocity 0.1391 m/s against 0.268 m/s. The measured `update_rate_hz` is 5.0 for both, and the drift, delay, time-to-first-fix and `max_satellites` fields still match.
 
-Also, the Septentrio mosaic RTK horizontal sigma moved from 0.006 m to 0.01 m (listed in the table above); the 0.006 m figure in its code comment is stale.
-
 ### Comments in the code
 
-The per-variant comments in `src/build.rs` were carried over from 0.13.1 (converted to ASCII, some moved; wording unchanged) and still quote datasheet figures. Some disagree with the measured values, for example the ICM-42688-P comment "~17x quieter than MPU6000", the "Slightly noisier than MPU6000" comment on the MPU-6500, the magnetometer figures in mGauss (RM3100 "~0.013 mGauss" against a measured 1.5 mGauss), the barometer comment "best in class" on the DPS310, and the GPS CEP figures and the M10 "similar accuracy to M9N" and Here3 "built on u-blox M9N" comments. The measured value in the code is the one used; the comment is not.
+The arm comments in the four generated sections of `src/build.rs` (`ImuChip`, `MagChip`, `BaroChip` and `GpsChipset`) are built from the 0.13.1 comments by one rule:
 
-The four generated `///` doc lines that rustdoc shows still say "Datasheet-derived ...": on `imu_profile`, `mag_profile`, `baro_profile` and `gps_profile`. They are wrong for every measured value. The accurate provenance of each measured value is the generated comment above it: existing variants carry "was X (hitl-physics 0.13.1); median of N vehicles, run 2026-11-02", and the 23 new variants carry "was X (Other); median of N vehicles, run 2026-11-02". The hand-written docs of `ImuProfile`, `MagProfile`, `BaroProfile`, `GpsProfile` and `to_sensor_profiles` were corrected.
+- What a 0.13.1 comment says about the part itself is kept, for example "u-blox ZED-F9P", "single-band" or "cheap, temperature-unstable".
+- A 0.13.1 figure is kept only while no field it describes has a measured value. A re-measured field counts even when its value did not change, so the M8N's "18 Hz max (5 Hz default)" is gone although its `update_rate_hz` is still 5.0.
+- A claim that compares the part with another is dropped. The ICM-42688-P comment is now "modern flagship", without "~17x quieter than MPU6000", and the DPS310 and MPU-6500 arms have no comment, because "best in class" and "Slightly noisier than MPU6000" were their whole comments.
+- Every GPS arm with a measured value ends with the fix class of its medians: "measured over standalone 3D fixes" or "measured over RTK fixed solutions".
+
+A comment with nothing dropped is unchanged from 0.13.1. th3seus-tools classifies each 0.13.1 phrase in `log_validation/part_notes.py`, and it does not generate a section whose 0.13.1 comments hold a phrase it has not classified.
+
+The `///` docs of `imu_profile`, `mag_profile`, `baro_profile` and `gps_profile` no longer say "Datasheet-derived". Each says that a value with a "was" comment is the median over vehicles measured from real PX4 logs in run 2026-11-02, and that every other value is the hitl-physics 0.13.1 table value. The IMU and GPS docs quote their sources as "hitl-physics 0.13.1 sources:". The comment above each measured value says what it replaced and how many vehicles it is the median of: existing variants carry "was X (hitl-physics 0.13.1); median of N vehicles, run 2026-11-02", and the 23 new variants carry "was X (Other); median of N vehicles, run 2026-11-02". The hand-written docs of `ImuProfile`, `MagProfile`, `BaroProfile`, `GpsProfile` and `to_sensor_profiles` were corrected to match.
 
 ## 0.13.1 — 2026-09-04
 
